@@ -1,0 +1,15 @@
+{
+  "version": "1",
+  "auth": {
+    "aws_region": "us-east-2",
+    "user_pool_id": "temp",
+    "user_pool_client_id": "temp",
+    "identity_pool_id": "temp"
+  },
+  "data": {
+    "aws_region": "us-east-2",
+    "url": "temp",
+    "api_key": "temp",
+    "default_authorization_type": "AMAZON_COGNITO_USER_POOLS"
+  }
+}
