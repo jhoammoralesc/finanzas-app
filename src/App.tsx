@@ -1,3 +1,5 @@
+import { useEffect, useState } from 'react';
+import { Amplify } from 'aws-amplify';
 import { Authenticator } from '@aws-amplify/ui-react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 
@@ -8,10 +10,23 @@ import Reports from './pages/Reports';
 import Settings from './pages/Settings';
 import Navigation from './components/Navigation';
 
+import amplifyOutputs from '../amplify_outputs.json';
 import '@aws-amplify/ui-react/styles.css';
 import './App.css';
 
 function App() {
+  const [isConfigured, setIsConfigured] = useState(false);
+
+  useEffect(() => {
+    // Configurar Amplify con los outputs reales
+    Amplify.configure(amplifyOutputs);
+    setIsConfigured(true);
+  }, []);
+
+  if (!isConfigured) {
+    return <div className="loading">Configurando aplicación...</div>;
+  }
+
   return (
     <Authenticator>
       {({ signOut, user }) => (
