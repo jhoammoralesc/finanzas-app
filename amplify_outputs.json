@@ -3,13 +3,10 @@
   "auth": {
     "aws_region": "us-east-2",
     "user_pool_id": "us-east-2_EujJ7zFfl",
-    "user_pool_client_id": "7p9hsnoap99uganqo5343it46v",
-    "identity_pool_id": "temp"
+    "user_pool_client_id": "7p9hsnoap99uganqo5343it46v"
   },
-  "data": {
+  "api": {
     "aws_region": "us-east-2",
-    "url": "temp",
-    "api_key": "temp",
-    "default_authorization_type": "AMAZON_COGNITO_USER_POOLS"
+    "endpoint": "https://d5b928o88l.execute-api.us-east-2.amazonaws.com/prod"
   }
 }
