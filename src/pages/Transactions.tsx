@@ -1,105 +1,48 @@
-import { useState, useEffect } from 'react';
-
-interface Transaction {
-  id: string;
-  amount: number;
-  type: 'INCOME' | 'EXPENSE';
-  category: string;
-  description: string;
-  date: string;
-}
+import { useState } from 'react';
+import { useData } from '../context/DataContext';
 
 const Transactions = () => {
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { transactions, addTransaction, deleteTransaction } = useData();
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState({
     amount: '',
-    type: 'EXPENSE',
-    category: '',
     description: '',
+    category: '',
+    type: 'expense' as 'income' | 'expense',
     date: new Date().toISOString().split('T')[0]
   });
 
-  const categories = {
-    EXPENSE: ['Alimentación', 'Transporte', 'Entretenimiento', 'Servicios', 'Salud', 'Educación', 'Otros'],
-    INCOME: ['Salario', 'Freelance', 'Inversiones', 'Ventas', 'Otros']
-  };
+  const categories = ['Alimentación', 'Transporte', 'Entretenimiento', 'Salud', 'Educación', 'Salario', 'Otros'];
 
-  useEffect(() => {
-    loadTransactions();
-  }, []);
-
-  const loadTransactions = async () => {
-    try {
-      // Simular carga de transacciones
-      const mockTransactions: Transaction[] = [
-        {
-          id: '1',
-          amount: 25000,
-          type: 'EXPENSE',
-          category: 'Alimentación',
-          description: 'Almuerzo restaurante',
-          date: '2024-03-15'
-        },
-        {
-          id: '2',
-          amount: 500000,
-          type: 'INCOME',
-          category: 'Freelance',
-          description: 'Proyecto web',
-          date: '2024-03-14'
-        }
-      ];
-      
-      setTransactions(mockTransactions);
-    } catch (error) {
-      console.error('Error loading transactions:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
-    try {
-      const newTransaction: Transaction = {
-        id: Date.now().toString(),
+    if (formData.amount && formData.description && formData.category) {
+      addTransaction({
         amount: parseFloat(formData.amount),
-        type: formData.type as 'INCOME' | 'EXPENSE',
-        category: formData.category,
         description: formData.description,
-        date: formData.date,
-      };
-
-      setTransactions([newTransaction, ...transactions]);
-
+        category: formData.category,
+        type: formData.type,
+        date: formData.date
+      });
       setFormData({
         amount: '',
-        type: 'EXPENSE',
-        category: '',
         description: '',
+        category: '',
+        type: 'expense',
         date: new Date().toISOString().split('T')[0]
       });
-      
       setShowForm(false);
-    } catch (error) {
-      console.error('Error creating transaction:', error);
     }
   };
 
-  const deleteTransaction = async (id: string) => {
-    try {
-      setTransactions(transactions.filter(t => t.id !== id));
-    } catch (error) {
-      console.error('Error deleting transaction:', error);
+  const handleDelete = (id: string) => {
+    if (confirm('¿Estás seguro de eliminar esta transacción?')) {
+      deleteTransaction(id);
     }
   };
 
-  if (loading) {
-    return <div className="loading">Cargando transacciones...</div>;
-  }
+  const totalIncome = transactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
+  const totalExpenses = transactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
 
   return (
     <div className="transactions">
@@ -113,6 +56,21 @@ const Transactions = () => {
         </button>
       </div>
 
+      <div className="summary-cards">
+        <div className="summary-card income">
+          <h3>Ingresos</h3>
+          <p className="amount">${totalIncome.toLocaleString()}</p>
+        </div>
+        <div className="summary-card expense">
+          <h3>Gastos</h3>
+          <p className="amount">${totalExpenses.toLocaleString()}</p>
+        </div>
+        <div className="summary-card balance">
+          <h3>Balance</h3>
+          <p className="amount">${(totalIncome - totalExpenses).toLocaleString()}</p>
+        </div>
+      </div>
+
       {showForm && (
         <div className="transaction-form">
           <h3>Nueva Transacción</h3>
@@ -120,68 +78,63 @@ const Transactions = () => {
             <div className="form-row">
               <div className="form-group">
                 <label>Tipo</label>
-                <select
+                <select 
                   value={formData.type}
-                  onChange={(e) => setFormData({...formData, type: e.target.value, category: ''})}
-                  required
+                  onChange={(e) => setFormData({...formData, type: e.target.value as 'income' | 'expense'})}
                 >
-                  <option value="EXPENSE">Gasto</option>
-                  <option value="INCOME">Ingreso</option>
+                  <option value="expense">Gasto</option>
+                  <option value="income">Ingreso</option>
                 </select>
               </div>
-
               <div className="form-group">
                 <label>Monto</label>
                 <input
                   type="number"
+                  step="0.01"
                   value={formData.amount}
                   onChange={(e) => setFormData({...formData, amount: e.target.value})}
-                  placeholder="0"
+                  placeholder="0.00"
                   required
                 />
               </div>
             </div>
-
             <div className="form-row">
               <div className="form-group">
+                <label>Descripción</label>
+                <input
+                  type="text"
+                  value={formData.description}
+                  onChange={(e) => setFormData({...formData, description: e.target.value})}
+                  placeholder="Descripción de la transacción"
+                  required
+                />
+              </div>
+              <div className="form-group">
                 <label>Categoría</label>
-                <select
+                <select 
                   value={formData.category}
                   onChange={(e) => setFormData({...formData, category: e.target.value})}
                   required
                 >
                   <option value="">Seleccionar categoría</option>
-                  {categories[formData.type as keyof typeof categories].map(cat => (
+                  {categories.map(cat => (
                     <option key={cat} value={cat}>{cat}</option>
                   ))}
                 </select>
               </div>
-
-              <div className="form-group">
-                <label>Fecha</label>
-                <input
-                  type="date"
-                  value={formData.date}
-                  onChange={(e) => setFormData({...formData, date: e.target.value})}
-                  required
-                />
-              </div>
             </div>
-
             <div className="form-group">
-              <label>Descripción</label>
+              <label>Fecha</label>
               <input
-                type="text"
-                value={formData.description}
-                onChange={(e) => setFormData({...formData, description: e.target.value})}
-                placeholder="Descripción de la transacción"
+                type="date"
+                value={formData.date}
+                onChange={(e) => setFormData({...formData, date: e.target.value})}
                 required
               />
             </div>
-
             <div className="form-actions">
               <button type="submit" className="btn-primary">Guardar</button>
-              <button type="button" onClick={() => setShowForm(false)} className="btn-secondary">
+              <button type="button" className="btn-secondary" onClick={() => setShowForm(false)}>
                 Cancelar
               </button>
             </div>
@@ -190,39 +143,32 @@ const Transactions = () => {
       )}
 
       <div className="transactions-list">
+        <h3>Historial de Transacciones</h3>
         {transactions.length === 0 ? (
-          <div className="empty-state">
-            <p>No hay transacciones registradas</p>
-            <p>Agrega tu primera transacción o envía un mensaje por WhatsApp</p>
-          </div>
+          <p className="empty-state">No hay transacciones registradas</p>
         ) : (
           <div className="transactions-table">
-            <div className="table-header">
-              <span>Fecha</span>
-              <span>Descripción</span>
-              <span>Categoría</span>
-              <span>Monto</span>
-              <span>Acciones</span>
-            </div>
-            
-            {transactions.map((transaction) => (
-              <div key={transaction.id} className="table-row">
-                <span>{new Date(transaction.date).toLocaleDateString()}</span>
-                <span>{transaction.description}</span>
-                <span className="category">{transaction.category}</span>
-                <span className={`amount ${transaction.type.toLowerCase()}`}>
-                  {transaction.type === 'EXPENSE' ? '-' : '+'}
-                  ${transaction.amount.toLocaleString()}
-                </span>
-                <span className="actions">
-                  <button 
-                    onClick={() => deleteTransaction(transaction.id)}
-                    className="btn-delete"
-                    title="Eliminar"
-                  >
-                    🗑️
-                  </button>
-                </span>
+            {transactions.map(transaction => (
+              <div key={transaction.id} className={`transaction-item ${transaction.type}`}>
+                <div className="transaction-info">
+                  <div className="transaction-main">
+                    <span className="description">{transaction.description}</span>
+                    <span className={`amount ${transaction.type}`}>
+                      {transaction.type === 'income' ? '+' : '-'}${transaction.amount.toLocaleString()}
+                    </span>
+                  </div>
+                  <div className="transaction-details">
+                    <span className="category">{transaction.category}</span>
+                    <span className="date">{new Date(transaction.date).toLocaleDateString()}</span>
+                  </div>
+                </div>
+                <button 
+                  className="btn-delete"
+                  onClick={() => handleDelete(transaction.id)}
+                  title="Eliminar transacción"
+                >
+                  🗑️
+                </button>
               </div>
             ))}
           </div>

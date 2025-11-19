@@ -9,6 +9,7 @@ import Budget from './pages/Budget';
 import Reports from './pages/Reports';
 import Settings from './pages/Settings';
 import Navigation from './components/Navigation';
+import { DataProvider } from './context/DataContext';
 
 import '@aws-amplify/ui-react/styles.css';
 import './App.css';
@@ -16,9 +17,11 @@ import './App.css';
 const amplifyConfig = {
   Auth: {
     Cognito: {
-      region: 'us-east-2',
       userPoolId: 'us-east-2_EujJ7zFfl',
-      userPoolClientId: '7p9hsnoap99uganqo5343it46v'
+      userPoolClientId: '7p9hsnoap99uganqo5343it46v',
+      loginWith: {
+        email: true
+      }
     }
   }
 };
@@ -41,22 +44,27 @@ function App() {
   }
 
   return (
-    <Authenticator>
+    <Authenticator
+      signUpAttributes={['email', 'given_name']}
+      loginMechanisms={['email']}
+    >
       {({ signOut, user }) => (
-        <Router>
-          <div className="app">
-            <Navigation user={user} signOut={signOut || (() => {})} />
-            <main className="main-content">
-              <Routes>
-                <Route path="/" element={<Dashboard />} />
-                <Route path="/transactions" element={<Transactions />} />
-                <Route path="/budget" element={<Budget />} />
-                <Route path="/reports" element={<Reports />} />
-                <Route path="/settings" element={<Settings />} />
-              </Routes>
-            </main>
-          </div>
-        </Router>
+        <DataProvider userId={user?.userId || 'demo'}>
+          <Router>
+            <div className="app">
+              <Navigation user={user} signOut={signOut || (() => {})} />
+              <main className="main-content">
+                <Routes>
+                  <Route path="/" element={<Dashboard />} />
+                  <Route path="/transactions" element={<Transactions />} />
+                  <Route path="/budget" element={<Budget />} />
+                  <Route path="/reports" element={<Reports />} />
+                  <Route path="/settings" element={<Settings />} />
+                </Routes>
+              </main>
+            </div>
+          </Router>
+        </DataProvider>
       )}
     </Authenticator>
   );
