@@ -1,6 +1,11 @@
-# 💰 FinanzasApp - Gestión Financiera Personal
+# 💰 FinanzasApp - Gestión Financiera Personal 🚀
 
 Una aplicación completa de gestión financiera personal con integración de WhatsApp Bot, análisis inteligente y reportes detallados.
+
+**🌐 Nueva URL con Auto-Deploy**: https://d2lrwv7cxtby1n.amplifyapp.com
+
+## ✅ Auto-Deploy Configurado
+Cada push a main despliega automáticamente usando GitHub Actions.
 
 ## 🚀 Características
 
