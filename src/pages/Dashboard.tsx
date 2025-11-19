@@ -2,11 +2,15 @@ import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Toolti
 import { useData } from '../context/DataContext';
 
 const Dashboard = () => {
-  const { transactions, budgets } = useData();
+  const { transactions, budgets, loading } = useData();
 
   const totalIncome = transactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
   const totalExpenses = transactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
   const balance = totalIncome - totalExpenses;
+
+  if (loading) {
+    return <div className="loading">Cargando dashboard...</div>;
+  }
 
   // Datos para gráfico de gastos por categoría
   const expensesByCategory = transactions

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useData } from '../context/DataContext';
 
 const Transactions = () => {
-  const { transactions, addTransaction, deleteTransaction } = useData();
+  const { transactions, addTransaction, deleteTransaction, loading } = useData();
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState({
     amount: '',
@@ -14,10 +14,10 @@ const Transactions = () => {
 
   const categories = ['Alimentación', 'Transporte', 'Entretenimiento', 'Salud', 'Educación', 'Salario', 'Otros'];
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (formData.amount && formData.description && formData.category) {
-      addTransaction({
+      await addTransaction({
         amount: parseFloat(formData.amount),
         description: formData.description,
         category: formData.category,
@@ -35,14 +35,18 @@ const Transactions = () => {
     }
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (confirm('¿Estás seguro de eliminar esta transacción?')) {
-      deleteTransaction(id);
+      await deleteTransaction(id);
     }
   };
 
   const totalIncome = transactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
   const totalExpenses = transactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
+
+  if (loading) {
+    return <div className="loading">Cargando transacciones...</div>;
+  }
 
   return (
     <div className="transactions">

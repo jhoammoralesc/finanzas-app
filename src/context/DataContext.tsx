@@ -1,4 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { fetchAuthSession } from 'aws-amplify/auth';
+
+const API_ENDPOINT = 'https://d5b928o88l.execute-api.us-east-2.amazonaws.com/prod';
 
 export interface Transaction {
   id: string;
@@ -22,10 +25,11 @@ export interface Budget {
 interface DataContextType {
   transactions: Transaction[];
   budgets: Budget[];
-  addTransaction: (transaction: Omit<Transaction, 'id' | 'userId'>) => void;
+  loading: boolean;
+  addTransaction: (transaction: Omit<Transaction, 'id' | 'userId'>) => Promise<void>;
   updateTransaction: (id: string, transaction: Partial<Transaction>) => void;
-  deleteTransaction: (id: string) => void;
-  addBudget: (budget: Omit<Budget, 'id' | 'userId' | 'spent'>) => void;
+  deleteTransaction: (id: string) => Promise<void>;
+  addBudget: (budget: Omit<Budget, 'id' | 'userId' | 'spent'>) => Promise<void>;
   updateBudget: (id: string, budget: Partial<Budget>) => void;
   deleteBudget: (id: string) => void;
 }
@@ -43,77 +47,78 @@ export const useData = () => {
 export const DataProvider: React.FC<{ children: React.ReactNode; userId: string }> = ({ children, userId }) => {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [budgets, setBudgets] = useState<Budget[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const getAuthToken = async () => {
+    const session = await fetchAuthSession();
+    return session.tokens?.idToken?.toString();
+  };
+
+  const fetchTransactions = async () => {
+    try {
+      const token = await getAuthToken();
+      const response = await fetch(`${API_ENDPOINT}/transactions`, {
+        headers: { 'Authorization': token || '' }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setTransactions(data);
+      }
+    } catch (error) {
+      console.error('Error fetching transactions:', error);
+    }
+  };
+
+  const fetchBudgets = async () => {
+    try {
+      const token = await getAuthToken();
+      const response = await fetch(`${API_ENDPOINT}/budgets`, {
+        headers: { 'Authorization': token || '' }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setBudgets(data);
+      }
+    } catch (error) {
+      console.error('Error fetching budgets:', error);
+    }
+  };
 
   useEffect(() => {
-    // Load demo data
-    const demoTransactions: Transaction[] = [
-      {
-        id: '1',
-        amount: 3000,
-        description: 'Salario',
-        category: 'Salario',
-        type: 'income',
-        date: '2025-11-01',
-        userId
-      },
-      {
-        id: '2',
-        amount: 500,
-        description: 'Supermercado',
-        category: 'Alimentación',
-        type: 'expense',
-        date: '2025-11-15',
-        userId
-      },
-      {
-        id: '3',
-        amount: 200,
-        description: 'Gasolina',
-        category: 'Transporte',
-        type: 'expense',
-        date: '2025-11-18',
-        userId
-      }
-    ];
-
-    const demoBudgets: Budget[] = [
-      {
-        id: '1',
-        category: 'Alimentación',
-        amount: 800,
-        spent: 500,
-        period: 'monthly',
-        userId
-      },
-      {
-        id: '2',
-        category: 'Transporte',
-        amount: 400,
-        spent: 200,
-        period: 'monthly',
-        userId
-      }
-    ];
-
-    setTransactions(demoTransactions);
-    setBudgets(demoBudgets);
+    const loadData = async () => {
+      setLoading(true);
+      await Promise.all([fetchTransactions(), fetchBudgets()]);
+      setLoading(false);
+    };
+    loadData();
   }, [userId]);
 
-  const addTransaction = (transaction: Omit<Transaction, 'id' | 'userId'>) => {
-    const newTransaction: Transaction = {
-      ...transaction,
-      id: Date.now().toString(),
-      userId
-    };
-    setTransactions(prev => [newTransaction, ...prev]);
-    
-    // Update budget spent amount
-    if (transaction.type === 'expense') {
-      setBudgets(prev => prev.map(budget => 
-        budget.category === transaction.category 
-          ? { ...budget, spent: budget.spent + transaction.amount }
-          : budget
-      ));
+  const addTransaction = async (transaction: Omit<Transaction, 'id' | 'userId'>) => {
+    try {
+      const token = await getAuthToken();
+      const response = await fetch(`${API_ENDPOINT}/transactions`, {
+        method: 'POST',
+        headers: {
+          'Authorization': token || '',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(transaction)
+      });
+      
+      if (response.ok) {
+        const newTransaction = await response.json();
+        setTransactions(prev => [newTransaction, ...prev]);
+        
+        if (transaction.type === 'expense') {
+          setBudgets(prev => prev.map(budget => 
+            budget.category === transaction.category 
+              ? { ...budget, spent: budget.spent + transaction.amount }
+              : budget
+          ));
+        }
+      }
+    } catch (error) {
+      console.error('Error adding transaction:', error);
     }
   };
 
@@ -123,26 +128,49 @@ export const DataProvider: React.FC<{ children: React.ReactNode; userId: string 
     ));
   };
 
-  const deleteTransaction = (id: string) => {
-    const transaction = transactions.find(t => t.id === id);
-    if (transaction && transaction.type === 'expense') {
-      setBudgets(prev => prev.map(budget => 
-        budget.category === transaction.category 
-          ? { ...budget, spent: Math.max(0, budget.spent - transaction.amount) }
-          : budget
-      ));
+  const deleteTransaction = async (id: string) => {
+    try {
+      const token = await getAuthToken();
+      const response = await fetch(`${API_ENDPOINT}/transactions/${id}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': token || '' }
+      });
+      
+      if (response.ok) {
+        const transaction = transactions.find(t => t.id === id);
+        if (transaction && transaction.type === 'expense') {
+          setBudgets(prev => prev.map(budget => 
+            budget.category === transaction.category 
+              ? { ...budget, spent: Math.max(0, budget.spent - transaction.amount) }
+              : budget
+          ));
+        }
+        setTransactions(prev => prev.filter(transaction => transaction.id !== id));
+      }
+    } catch (error) {
+      console.error('Error deleting transaction:', error);
     }
-    setTransactions(prev => prev.filter(transaction => transaction.id !== id));
   };
 
-  const addBudget = (budget: Omit<Budget, 'id' | 'userId' | 'spent'>) => {
-    const newBudget: Budget = {
-      ...budget,
-      id: Date.now().toString(),
-      spent: 0,
-      userId
-    };
-    setBudgets(prev => [...prev, newBudget]);
+  const addBudget = async (budget: Omit<Budget, 'id' | 'userId' | 'spent'>) => {
+    try {
+      const token = await getAuthToken();
+      const response = await fetch(`${API_ENDPOINT}/budgets`, {
+        method: 'POST',
+        headers: {
+          'Authorization': token || '',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(budget)
+      });
+      
+      if (response.ok) {
+        const newBudget = await response.json();
+        setBudgets(prev => [...prev, newBudget]);
+      }
+    } catch (error) {
+      console.error('Error adding budget:', error);
+    }
   };
 
   const updateBudget = (id: string, updatedBudget: Partial<Budget>) => {
@@ -159,6 +187,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode; userId: string 
     <DataContext.Provider value={{
       transactions,
       budgets,
+      loading,
       addTransaction,
       updateTransaction,
       deleteTransaction,
