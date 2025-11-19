@@ -15,11 +15,9 @@ import './App.css';
 
 const amplifyConfig = {
   Auth: {
-    Cognito: {
-      userPoolId: 'us-east-2_EujJ7zFfl',
-      userPoolClientId: '7p9hsnoap99uganqo5343it46v',
-      region: 'us-east-2'
-    }
+    region: 'us-east-2',
+    userPoolId: 'us-east-2_EujJ7zFfl',
+    userPoolWebClientId: '7p9hsnoap99uganqo5343it46v'
   }
 };
 
@@ -32,7 +30,7 @@ function App() {
       setIsConfigured(true);
     } catch (error) {
       console.error('Error configurando Amplify:', error);
-      setIsConfigured(true); // Continuar sin auth para debug
+      setIsConfigured(true);
     }
   }, []);
 
