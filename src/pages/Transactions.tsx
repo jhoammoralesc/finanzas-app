@@ -1,11 +1,16 @@
 import { useState, useEffect } from 'react';
-import { generateClient } from 'aws-amplify/data';
-import type { Schema } from '../../amplify/data/resource';
 
-const client = generateClient<Schema>();
+interface Transaction {
+  id: string;
+  amount: number;
+  type: 'INCOME' | 'EXPENSE';
+  category: string;
+  description: string;
+  date: string;
+}
 
 const Transactions = () => {
-  const [transactions, setTransactions] = useState<any[]>([]);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState({
@@ -27,10 +32,27 @@ const Transactions = () => {
 
   const loadTransactions = async () => {
     try {
-      const { data } = await client.models.Transaction.list({
-        limit: 50,
-      });
-      setTransactions(data || []);
+      // Simular carga de transacciones
+      const mockTransactions: Transaction[] = [
+        {
+          id: '1',
+          amount: 25000,
+          type: 'EXPENSE',
+          category: 'Alimentación',
+          description: 'Almuerzo restaurante',
+          date: '2024-03-15'
+        },
+        {
+          id: '2',
+          amount: 500000,
+          type: 'INCOME',
+          category: 'Freelance',
+          description: 'Proyecto web',
+          date: '2024-03-14'
+        }
+      ];
+      
+      setTransactions(mockTransactions);
     } catch (error) {
       console.error('Error loading transactions:', error);
     } finally {
@@ -42,15 +64,16 @@ const Transactions = () => {
     e.preventDefault();
     
     try {
-      await client.models.Transaction.create({
+      const newTransaction: Transaction = {
+        id: Date.now().toString(),
         amount: parseFloat(formData.amount),
         type: formData.type as 'INCOME' | 'EXPENSE',
         category: formData.category,
         description: formData.description,
         date: formData.date,
-        source: 'MANUAL',
-        isRecurring: false,
-      });
+      };
+
+      setTransactions([newTransaction, ...transactions]);
 
       setFormData({
         amount: '',
@@ -61,7 +84,6 @@ const Transactions = () => {
       });
       
       setShowForm(false);
-      loadTransactions();
     } catch (error) {
       console.error('Error creating transaction:', error);
     }
@@ -69,8 +91,7 @@ const Transactions = () => {
 
   const deleteTransaction = async (id: string) => {
     try {
-      await client.models.Transaction.delete({ id });
-      loadTransactions();
+      setTransactions(transactions.filter(t => t.id !== id));
     } catch (error) {
       console.error('Error deleting transaction:', error);
     }

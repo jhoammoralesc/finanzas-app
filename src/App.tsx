@@ -1,9 +1,5 @@
-import { useEffect, useState } from 'react';
-import { Amplify } from 'aws-amplify';
 import { Authenticator } from '@aws-amplify/ui-react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
-import { generateClient } from 'aws-amplify/data';
-import type { Schema } from '../amplify/data/resource';
 
 import Dashboard from './pages/Dashboard';
 import Transactions from './pages/Transactions';
@@ -15,19 +11,13 @@ import Navigation from './components/Navigation';
 import '@aws-amplify/ui-react/styles.css';
 import './App.css';
 
-import outputs from '../amplify_outputs.json';
-
-Amplify.configure(outputs);
-
-const client = generateClient<Schema>();
-
 function App() {
   return (
     <Authenticator>
       {({ signOut, user }) => (
         <Router>
           <div className="app">
-            <Navigation user={user} signOut={signOut} />
+            <Navigation user={user} signOut={signOut || (() => {})} />
             <main className="main-content">
               <Routes>
                 <Route path="/" element={<Dashboard />} />

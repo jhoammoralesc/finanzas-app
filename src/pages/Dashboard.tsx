@@ -1,12 +1,29 @@
 import { useState, useEffect } from 'react';
-import { generateClient } from 'aws-amplify/data';
-import type { Schema } from '../../amplify/data/resource';
 import { PieChart, Pie, Cell, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
-const client = generateClient<Schema>();
+interface CategoryData {
+  name: string;
+  value: number;
+  color: string;
+}
+
+interface TrendData {
+  month: string;
+  income: number;
+  expenses: number;
+}
+
+interface DashboardState {
+  balance: number;
+  monthlyIncome: number;
+  monthlyExpenses: number;
+  transactions: any[];
+  categoryData: CategoryData[];
+  trendData: TrendData[];
+}
 
 const Dashboard = () => {
-  const [dashboardData, setDashboardData] = useState({
+  const [dashboardData, setDashboardData] = useState<DashboardState>({
     balance: 0,
     monthlyIncome: 0,
     monthlyExpenses: 0,
@@ -23,17 +40,12 @@ const Dashboard = () => {
 
   const loadDashboardData = async () => {
     try {
-      // Cargar transacciones recientes
-      const { data: transactions } = await client.models.Transaction.list({
-        limit: 10,
-      });
-
       // Simular datos para el dashboard
-      const mockData = {
+      const mockData: DashboardState = {
         balance: 2450000,
         monthlyIncome: 3500000,
         monthlyExpenses: 1050000,
-        transactions: transactions || [],
+        transactions: [],
         categoryData: [
           { name: 'Alimentación', value: 450000, color: '#FF6B6B' },
           { name: 'Transporte', value: 200000, color: '#4ECDC4' },

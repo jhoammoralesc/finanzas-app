@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 
 const Budget = () => {
-  const [budgets, setBudgets] = useState([
+  const [budgets] = useState([
     { id: 1, category: 'Alimentación', budgeted: 300000, spent: 245000 },
     { id: 2, category: 'Transporte', budgeted: 150000, spent: 120000 },
     { id: 3, category: 'Entretenimiento', budgeted: 100000, spent: 85000 },
