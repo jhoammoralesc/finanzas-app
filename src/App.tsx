@@ -10,17 +10,30 @@ import Reports from './pages/Reports';
 import Settings from './pages/Settings';
 import Navigation from './components/Navigation';
 
-import amplifyOutputs from '../amplify_outputs.json';
 import '@aws-amplify/ui-react/styles.css';
 import './App.css';
+
+const amplifyConfig = {
+  Auth: {
+    Cognito: {
+      userPoolId: 'us-east-2_EujJ7zFfl',
+      userPoolClientId: '7p9hsnoap99uganqo5343it46v',
+      region: 'us-east-2'
+    }
+  }
+};
 
 function App() {
   const [isConfigured, setIsConfigured] = useState(false);
 
   useEffect(() => {
-    // Configurar Amplify con los outputs reales
-    Amplify.configure(amplifyOutputs);
-    setIsConfigured(true);
+    try {
+      Amplify.configure(amplifyConfig);
+      setIsConfigured(true);
+    } catch (error) {
+      console.error('Error configurando Amplify:', error);
+      setIsConfigured(true); // Continuar sin auth para debug
+    }
   }, []);
 
   if (!isConfigured) {
