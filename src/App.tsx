@@ -15,9 +15,11 @@ import './App.css';
 
 const amplifyConfig = {
   Auth: {
-    region: 'us-east-2',
-    userPoolId: 'us-east-2_EujJ7zFfl',
-    userPoolWebClientId: '7p9hsnoap99uganqo5343it46v'
+    Cognito: {
+      region: 'us-east-2',
+      userPoolId: 'us-east-2_EujJ7zFfl',
+      userPoolClientId: '7p9hsnoap99uganqo5343it46v'
+    }
   }
 };
 
