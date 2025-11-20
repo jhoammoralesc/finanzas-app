@@ -175,10 +175,27 @@ const Settings = () => {
           )}
           
           {isLinked && (
-            <div className="whatsapp-status">
-              <span className="status-indicator connected">🟢</span>
-              <span>Bot conectado y funcionando</span>
-            </div>
+            <>
+              <div className="whatsapp-status">
+                <span className="status-indicator connected">🟢</span>
+                <span>Bot conectado y funcionando</span>
+              </div>
+              
+              <a 
+                href="https://wa.me/15551673074" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="btn-primary"
+                style={{ 
+                  display: 'inline-block', 
+                  marginTop: '1rem',
+                  textDecoration: 'none',
+                  textAlign: 'center'
+                }}
+              >
+                💬 Abrir Chat con el Bot
+              </a>
+            </>
           )}
           
           <div className="whatsapp-help">
