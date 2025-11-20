@@ -1,6 +1,10 @@
 const { LambdaClient, InvokeCommand } = require('@aws-sdk/client-lambda');
+const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
+const { DynamoDBDocumentClient, QueryCommand } = require('@aws-sdk/lib-dynamodb');
 
 const lambdaClient = new LambdaClient({ region: 'us-east-2' });
+const ddbClient = new DynamoDBClient({ region: 'us-east-2' });
+const docClient = DynamoDBDocumentClient.from(ddbClient);
 const VERIFY_TOKEN = process.env.VERIFY_TOKEN || 'finanzas-verify-token';
 
 exports.handler = async (event) => {
@@ -26,11 +30,15 @@ exports.handler = async (event) => {
     try {
       const body = JSON.parse(event.body);
       
+      console.log('Body:', JSON.stringify(body, null, 2));
+      
       if (body.object === 'whatsapp_business_account') {
         for (const entry of body.entry || []) {
           for (const change of entry.changes || []) {
+            console.log('Change:', JSON.stringify(change, null, 2));
             if (change.value?.messages) {
               for (const message of change.value.messages) {
+                console.log('Processing message:', message);
                 await processMessage(message, change.value.metadata);
               }
             }
@@ -52,6 +60,12 @@ async function processMessage(message, metadata) {
   const { from, text } = message;
   const messageText = text?.body || '';
 
+  const userId = await getUserByWhatsApp(from);
+  if (!userId) {
+    console.log('User not found for WhatsApp:', from);
+    return;
+  }
+
   const parsed = parseMessage(messageText);
   
   if (!parsed) {
@@ -60,12 +74,25 @@ async function processMessage(message, metadata) {
   }
 
   if (parsed.type === 'transaction') {
-    await createTransaction(from, parsed.data);
+    await createTransaction(userId, parsed.data);
   } else if (parsed.type === 'budget') {
-    await createBudget(from, parsed.data);
+    await createBudget(userId, parsed.data);
   } else if (parsed.type === 'report') {
-    await generateReport(from);
+    await generateReport(userId);
   }
+}
+
+async function getUserByWhatsApp(whatsappNumber) {
+  const result = await docClient.send(new QueryCommand({
+    TableName: 'finanzas-users',
+    IndexName: 'whatsapp-index',
+    KeyConditionExpression: 'whatsappNumber = :phone',
+    ExpressionAttributeValues: {
+      ':phone': whatsappNumber
+    }
+  }));
+
+  return result.Items?.[0]?.userId;
 }
 
 function parseMessage(text) {
@@ -85,7 +112,7 @@ function parseMessage(text) {
     };
   }
 
-  const incomeMatch = lower.match(/(?:recib[ií]|ingres[oó]|cobr[eé])\s*\$?(\d+(?:\.\d+)?)\s+(?:de|por)\s+(.+)/i);
+  const incomeMatch = lower.match(/(?:recib[ií]|ingres[oó]|cobr[eé])\s*\$?(\d+(?:\.\d+)?)\s+(?:de|por)?\s*(.+)/i);
   if (incomeMatch) {
     return {
       type: 'transaction',

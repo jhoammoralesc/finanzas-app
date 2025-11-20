@@ -52,8 +52,8 @@ async function getTransactions(userId, headers) {
 
 async function createTransaction(userId, data, headers) {
   const transaction = {
+    id: Date.now().toString(),
     userId,
-    transactionId: Date.now().toString(),
     amount: data.amount,
     description: data.description,
     category: data.category,
