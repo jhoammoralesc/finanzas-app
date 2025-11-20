@@ -22,6 +22,8 @@ const Settings = () => {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [isLinked, setIsLinked] = useState(false);
+  const [showOtpInput, setShowOtpInput] = useState(false);
+  const [otp, setOtp] = useState('');
 
   const countryCodes = [
     { code: '+57', country: 'Colombia' },
@@ -48,7 +50,7 @@ const Settings = () => {
 
       if (response.ok) {
         const data = await response.json();
-        if (data.user?.whatsappNumber) {
+        if (data.user?.whatsappNumber && data.user?.verified) {
           setSettings(prev => ({ ...prev, whatsappNumber: data.user.whatsappNumber }));
           setIsLinked(true);
         }
@@ -77,10 +79,45 @@ const Settings = () => {
       });
 
       if (response.ok) {
-        setMessage('✅ WhatsApp vinculado correctamente');
-        setIsLinked(true);
+        setMessage('✅ Código enviado a WhatsApp. Revisa tu chat.');
+        setShowOtpInput(true);
+      } else if (response.status === 409) {
+        const data = await response.json();
+        setMessage(`❌ ${data.error || 'Este número ya está registrado'}`);
       } else {
         setMessage('❌ Error al vincular WhatsApp');
+      }
+    } catch (error) {
+      setMessage('❌ Error de conexión');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleVerifyOtp = async () => {
+    setLoading(true);
+    setMessage('');
+
+    try {
+      const session = await fetchAuthSession();
+      const token = session.tokens?.idToken?.toString();
+
+      const response = await fetch('https://d5b928o88l.execute-api.us-east-2.amazonaws.com/prod/users/verify-whatsapp', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': token || ''
+        },
+        body: JSON.stringify({ otp })
+      });
+
+      if (response.ok) {
+        setMessage('✅ WhatsApp verificado correctamente');
+        setIsLinked(true);
+        setShowOtpInput(false);
+      } else {
+        const data = await response.json();
+        setMessage(`❌ ${data.error || 'Código incorrecto'}`);
       }
     } catch (error) {
       setMessage('❌ Error de conexión');
@@ -154,15 +191,39 @@ const Settings = () => {
             </small>
           </div>
 
-          {!isLinked && (
+          {!isLinked && !showOtpInput && (
             <button 
               onClick={handleLinkWhatsApp}
               disabled={loading || !settings.whatsappNumber}
               className="btn-primary"
               style={{ marginBottom: '1rem' }}
             >
-              {loading ? 'Vinculando...' : '🔗 Vincular WhatsApp'}
+              {loading ? 'Enviando código...' : '🔗 Vincular WhatsApp'}
             </button>
+          )}
+
+          {showOtpInput && !isLinked && (
+            <div style={{ marginTop: '1rem' }}>
+              <div className="form-group">
+                <label>Código de verificación</label>
+                <input
+                  type="text"
+                  value={otp}
+                  onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  placeholder="123456"
+                  maxLength={6}
+                  style={{ width: '200px' }}
+                />
+              </div>
+              <button 
+                onClick={handleVerifyOtp}
+                disabled={loading || otp.length !== 6}
+                className="btn-primary"
+                style={{ marginBottom: '1rem' }}
+              >
+                {loading ? 'Verificando...' : '✓ Verificar Código'}
+              </button>
+            </div>
           )}
 
           {message && (
