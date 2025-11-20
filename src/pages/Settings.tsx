@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { fetchAuthSession } from 'aws-amplify/auth';
 
 const Settings = () => {
   const [settings, setSettings] = useState({
     monthlyIncome: '3500000',
     currency: 'COP',
-    whatsappNumber: '+57 300 123 4567',
+    whatsappNumber: '',
     notifications: {
       budgetAlerts: true,
       weeklyReports: true,
@@ -17,9 +18,66 @@ const Settings = () => {
       { name: 'Servicios', color: '#96CEB4', active: true },
     ]
   });
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState('');
+  const [isLinked, setIsLinked] = useState(false);
+
+  useEffect(() => {
+    loadUserData();
+  }, []);
+
+  const loadUserData = async () => {
+    try {
+      const session = await fetchAuthSession();
+      const token = session.tokens?.idToken?.toString();
+
+      const response = await fetch('https://d5b928o88l.execute-api.us-east-2.amazonaws.com/prod/users', {
+        headers: { 'Authorization': token || '' }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.user?.whatsappNumber) {
+          setSettings(prev => ({ ...prev, whatsappNumber: data.user.whatsappNumber }));
+          setIsLinked(true);
+        }
+      }
+    } catch (error) {
+      console.error('Error loading user data:', error);
+    }
+  };
+
+  const handleLinkWhatsApp = async () => {
+    setLoading(true);
+    setMessage('');
+
+    try {
+      const session = await fetchAuthSession();
+      const token = session.tokens?.idToken?.toString();
+
+      const response = await fetch('https://d5b928o88l.execute-api.us-east-2.amazonaws.com/prod/users/link-whatsapp', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': token || ''
+        },
+        body: JSON.stringify({ whatsappNumber: settings.whatsappNumber })
+      });
+
+      if (response.ok) {
+        setMessage('✅ WhatsApp vinculado correctamente');
+        setIsLinked(true);
+      } else {
+        setMessage('❌ Error al vincular WhatsApp');
+      }
+    } catch (error) {
+      setMessage('❌ Error de conexión');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleSave = () => {
-    // Aquí guardarías la configuración
     alert('Configuración guardada exitosamente');
   };
 
@@ -58,19 +116,42 @@ const Settings = () => {
         <h3>📱 WhatsApp</h3>
         <div className="whatsapp-config">
           <div className="form-group">
-            <label>Número de WhatsApp Registrado</label>
+            <label>Número de WhatsApp</label>
             <input
               type="tel"
               value={settings.whatsappNumber}
               onChange={(e) => setSettings({...settings, whatsappNumber: e.target.value})}
               placeholder="+57 300 123 4567"
+              disabled={isLinked}
             />
           </div>
+
+          {!isLinked && (
+            <button 
+              onClick={handleLinkWhatsApp}
+              disabled={loading || !settings.whatsappNumber}
+              className="btn-primary"
+              style={{ marginBottom: '1rem' }}
+            >
+              {loading ? 'Vinculando...' : '🔗 Vincular WhatsApp'}
+            </button>
+          )}
+
+          {message && (
+            <p style={{ 
+              color: message.includes('✅') ? 'green' : 'red',
+              marginBottom: '1rem'
+            }}>
+              {message}
+            </p>
+          )}
           
-          <div className="whatsapp-status">
-            <span className="status-indicator connected">🟢</span>
-            <span>Bot conectado y funcionando</span>
-          </div>
+          {isLinked && (
+            <div className="whatsapp-status">
+              <span className="status-indicator connected">🟢</span>
+              <span>Bot conectado y funcionando</span>
+            </div>
+          )}
           
           <div className="whatsapp-help">
             <h4>Comandos disponibles:</h4>
