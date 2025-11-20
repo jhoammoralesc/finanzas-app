@@ -1,8 +1,7 @@
 import { useState } from 'react';
-import { useData } from '../context/DataContext';
+import { fetchAuthSession } from 'aws-amplify/auth';
 
 export default function Configuracion() {
-  const { user } = useData();
   const [whatsappNumber, setWhatsappNumber] = useState('');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
@@ -12,18 +11,21 @@ export default function Configuracion() {
     setMessage('');
 
     try {
-      // TODO: Llamar API para vincular WhatsApp
+      const session = await fetchAuthSession();
+      const token = session.tokens?.idToken?.toString();
+
       const response = await fetch('https://d5b928o88l.execute-api.us-east-2.amazonaws.com/prod/users/link-whatsapp', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${await user?.getIdToken()}`
+          'Authorization': token || ''
         },
         body: JSON.stringify({ whatsappNumber })
       });
 
       if (response.ok) {
         setMessage('✅ WhatsApp vinculado correctamente');
+        setWhatsappNumber('');
       } else {
         setMessage('❌ Error al vincular WhatsApp');
       }
