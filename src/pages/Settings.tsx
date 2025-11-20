@@ -6,6 +6,7 @@ const Settings = () => {
     monthlyIncome: '3500000',
     currency: 'COP',
     whatsappNumber: '',
+    countryCode: '+57',
     notifications: {
       budgetAlerts: true,
       weeklyReports: true,
@@ -21,6 +22,16 @@ const Settings = () => {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [isLinked, setIsLinked] = useState(false);
+
+  const countryCodes = [
+    { code: '+57', country: 'Colombia' },
+    { code: '+1', country: 'USA/Canada' },
+    { code: '+52', country: 'México' },
+    { code: '+34', country: 'España' },
+    { code: '+54', country: 'Argentina' },
+    { code: '+56', country: 'Chile' },
+    { code: '+51', country: 'Perú' },
+  ];
 
   useEffect(() => {
     loadUserData();
@@ -54,6 +65,7 @@ const Settings = () => {
     try {
       const session = await fetchAuthSession();
       const token = session.tokens?.idToken?.toString();
+      const fullNumber = settings.countryCode + settings.whatsappNumber.replace(/\s/g, '');
 
       const response = await fetch('https://d5b928o88l.execute-api.us-east-2.amazonaws.com/prod/users/link-whatsapp', {
         method: 'POST',
@@ -61,7 +73,7 @@ const Settings = () => {
           'Content-Type': 'application/json',
           'Authorization': token || ''
         },
-        body: JSON.stringify({ whatsappNumber: settings.whatsappNumber })
+        body: JSON.stringify({ whatsappNumber: fullNumber })
       });
 
       if (response.ok) {
@@ -117,13 +129,29 @@ const Settings = () => {
         <div className="whatsapp-config">
           <div className="form-group">
             <label>Número de WhatsApp</label>
-            <input
-              type="tel"
-              value={settings.whatsappNumber}
-              onChange={(e) => setSettings({...settings, whatsappNumber: e.target.value})}
-              placeholder="+57 300 123 4567"
-              disabled={isLinked}
-            />
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <select
+                value={settings.countryCode}
+                onChange={(e) => setSettings({...settings, countryCode: e.target.value})}
+                disabled={isLinked}
+                style={{ width: '150px' }}
+              >
+                {countryCodes.map(c => (
+                  <option key={c.code} value={c.code}>{c.code} {c.country}</option>
+                ))}
+              </select>
+              <input
+                type="tel"
+                value={settings.whatsappNumber}
+                onChange={(e) => setSettings({...settings, whatsappNumber: e.target.value.replace(/\s/g, '')})}
+                placeholder="3001234567"
+                disabled={isLinked}
+                style={{ flex: 1 }}
+              />
+            </div>
+            <small style={{ color: '#666', marginTop: '0.5rem', display: 'block' }}>
+              Ingresa solo números, sin espacios ni guiones
+            </small>
           </div>
 
           {!isLinked && (
