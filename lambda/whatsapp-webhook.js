@@ -63,6 +63,7 @@ async function processMessage(message, metadata) {
   const userId = await getUserByWhatsApp(from);
   if (!userId) {
     console.log('User not found for WhatsApp:', from);
+    await sendWhatsAppMessage(from, '❌ Usuario no registrado. Vincula tu WhatsApp desde la app web.');
     return;
   }
 
@@ -70,15 +71,21 @@ async function processMessage(message, metadata) {
   
   if (!parsed) {
     console.log('Message not recognized:', messageText);
+    await sendWhatsAppMessage(from, '❓ No entendí tu mensaje. Ejemplos:\n• Gasté 25000 en almuerzo\n• Recibí 1000000 de salario\n• Reporte');
     return;
   }
 
   if (parsed.type === 'transaction') {
     await createTransaction(userId, parsed.data);
+    const emoji = parsed.data.transactionType === 'expense' ? '💸' : '💰';
+    const type = parsed.data.transactionType === 'expense' ? 'Gasto' : 'Ingreso';
+    await sendWhatsAppMessage(from, `${emoji} ${type} registrado:\n$${parsed.data.amount.toLocaleString()} - ${parsed.data.category}`);
   } else if (parsed.type === 'budget') {
     await createBudget(userId, parsed.data);
+    await sendWhatsAppMessage(from, `🎯 Presupuesto creado:\n$${parsed.data.amount.toLocaleString()} para ${parsed.data.category}`);
   } else if (parsed.type === 'report') {
     await generateReport(userId);
+    await sendWhatsAppMessage(from, '📊 Generando reporte...');
   }
 }
 
@@ -149,12 +156,12 @@ function parseMessage(text) {
 function categorize(description) {
   const desc = description.toLowerCase();
   const categories = {
-    'Alimentación': ['comida', 'almuerzo', 'cena', 'desayuno', 'restaurante', 'mercado'],
-    'Transporte': ['taxi', 'uber', 'gasolina', 'bus', 'metro'],
-    'Entretenimiento': ['cine', 'netflix', 'spotify', 'bar'],
-    'Salud': ['farmacia', 'medicina', 'doctor'],
-    'Educación': ['libro', 'curso', 'universidad'],
-    'Servicios': ['luz', 'agua', 'internet']
+    'Alimentación': ['comida', 'almuerzo', 'cena', 'desayuno', 'restaurante', 'mercado', 'supermercado', 'pizza', 'hamburguesa', 'pollo', 'arroz', 'frutas', 'verduras', 'pan', 'café', 'bebida'],
+    'Transporte': ['taxi', 'uber', 'gasolina', 'bus', 'metro', 'transporte', 'pasaje', 'combustible', 'parqueadero', 'peaje'],
+    'Entretenimiento': ['cine', 'netflix', 'spotify', 'bar', 'fiesta', 'concierto', 'juego', 'videojuego', 'streaming'],
+    'Salud': ['farmacia', 'medicina', 'doctor', 'hospital', 'consulta', 'medicamento', 'droga', 'vitamina'],
+    'Educación': ['libro', 'curso', 'universidad', 'colegio', 'matrícula', 'estudio', 'clase'],
+    'Servicios': ['luz', 'agua', 'internet', 'teléfono', 'cable', 'arriendo', 'alquiler', 'gas']
   };
 
   for (const [cat, keywords] of Object.entries(categories)) {
@@ -185,6 +192,37 @@ async function createTransaction(userId, data) {
     FunctionName: 'finanzas-transactions',
     Payload: JSON.stringify(payload)
   }));
+}
+
+async function sendWhatsAppMessage(to, message) {
+  const token = process.env.WHATSAPP_TOKEN;
+  const phoneId = process.env.WHATSAPP_PHONE_ID;
+  
+  if (!token || token === 'TEMP_TOKEN') {
+    console.log('WhatsApp token not configured, skipping message');
+    return;
+  }
+
+  try {
+    const response = await fetch(`https://graph.facebook.com/v18.0/${phoneId}/messages`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        messaging_product: 'whatsapp',
+        to: to,
+        text: { body: message }
+      })
+    });
+    
+    if (!response.ok) {
+      console.error('WhatsApp API error:', await response.text());
+    }
+  } catch (error) {
+    console.error('Failed to send WhatsApp message:', error);
+  }
 }
 
 async function createBudget(userId, data) {
@@ -218,9 +256,19 @@ async function generateReport(userId) {
     }
   };
 
-  await lambdaClient.send(new InvokeCommand({
+  const response = await lambdaClient.send(new InvokeCommand({
     FunctionName: 'finanzas-transactions',
     Payload: JSON.stringify(payload)
   }));
+
+  const result = JSON.parse(Buffer.from(response.Payload).toString());
+  const body = JSON.parse(result.body);
+  
+  const transactions = body.transactions || [];
+  const totalIncome = transactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
+  const totalExpense = transactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
+  const balance = totalIncome - totalExpense;
+  
+  console.log(`Report - Income: ${totalIncome}, Expense: ${totalExpense}, Balance: ${balance}`);
 }
 
