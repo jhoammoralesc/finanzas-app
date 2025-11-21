@@ -142,12 +142,17 @@ async function sendWhatsAppOTP(phoneNumber, otp) {
   const token = process.env.WHATSAPP_TOKEN;
   const phoneId = process.env.WHATSAPP_PHONE_ID || '896172040246487';
 
+  console.log('Sending OTP to:', phoneNumber, 'Phone ID:', phoneId);
+
   if (!token || token === 'TEMP_TOKEN') {
     console.log('WhatsApp token not configured, OTP:', otp);
     return;
   }
 
   try {
+    const normalizedPhone = phoneNumber.replace(/\s/g, '').replace(/^\+/, '');
+    console.log('Normalized phone:', normalizedPhone);
+    
     const response = await fetch(`https://graph.facebook.com/v18.0/${phoneId}/messages`, {
       method: 'POST',
       headers: {
@@ -156,18 +161,23 @@ async function sendWhatsAppOTP(phoneNumber, otp) {
       },
       body: JSON.stringify({
         messaging_product: 'whatsapp',
-        to: phoneNumber.replace(/\s/g, ''),
+        to: normalizedPhone,
         text: { 
           body: `🔐 Tu código de verificación para FinanzasApp es: ${otp}\n\nVálido por 10 minutos.` 
         }
       })
     });
 
+    const responseText = await response.text();
+    console.log('WhatsApp API response:', response.status, responseText);
+    
     if (!response.ok) {
-      console.error('WhatsApp API error:', await response.text());
+      console.error('WhatsApp API error:', responseText);
+      throw new Error(`WhatsApp API error: ${responseText}`);
     }
   } catch (error) {
     console.error('Failed to send OTP:', error);
+    throw error;
   }
 }
 

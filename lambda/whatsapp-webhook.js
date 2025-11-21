@@ -90,12 +90,17 @@ async function processMessage(message, metadata) {
 }
 
 async function getUserByWhatsApp(whatsappNumber) {
+  // Normalize: WhatsApp sends without +, but we store with +
+  const normalizedNumber = whatsappNumber.startsWith('+') ? whatsappNumber : `+${whatsappNumber}`;
+  
   const result = await docClient.send(new QueryCommand({
     TableName: 'finanzas-users',
     IndexName: 'whatsapp-index',
     KeyConditionExpression: 'whatsappNumber = :phone',
+    FilterExpression: 'verified = :verified',
     ExpressionAttributeValues: {
-      ':phone': whatsappNumber
+      ':phone': normalizedNumber,
+      ':verified': true
     }
   }));
 
