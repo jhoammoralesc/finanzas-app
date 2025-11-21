@@ -162,8 +162,10 @@ async function parseMessage(text, userId) {
 }
 
 async function categorize(description, userId) {
+  const desc = description.toLowerCase();
+  
   try {
-    // Obtener categorías disponibles
+    // Obtener categorías
     const defaultResult = await docClient.send(new QueryCommand({
       TableName: 'finanzas-categories',
       KeyConditionExpression: 'userId = :userId',
@@ -177,9 +179,20 @@ async function categorize(description, userId) {
     }));
 
     const allCategories = [...(defaultResult.Items || []), ...(customResult.Items || [])];
-    const categoryNames = allCategories.map(c => c.name).join(', ');
 
-    // Usar Bedrock para categorización inteligente
+    // 1. Try keywords first (fast, free)
+    for (const category of allCategories) {
+      const validKeywords = (category.keywords || [])
+        .filter(k => k.length > 1)
+        .sort((a, b) => b.length - a.length);
+      
+      if (validKeywords.some(k => desc.includes(k.toLowerCase()))) {
+        return category.name;
+      }
+    }
+
+    // 2. Fallback to Bedrock for ambiguous cases
+    const categoryNames = allCategories.map(c => c.name).join(', ');
     const prompt = `Categoriza el siguiente gasto en UNA de estas categorías: ${categoryNames}.
 
 Gasto: "${description}"
@@ -199,12 +212,11 @@ Responde SOLO con el nombre de la categoría, sin explicaciones.`;
     const result = JSON.parse(new TextDecoder().decode(response.body));
     const category = result.output?.message?.content?.[0]?.text?.trim();
     
-    // Validar que la categoría existe
     if (allCategories.some(c => c.name === category)) {
       return category;
     }
   } catch (error) {
-    console.error('Bedrock error:', error);
+    console.error('Categorization error:', error);
   }
   
   return 'Otros';
