@@ -1,10 +1,12 @@
 const { LambdaClient, InvokeCommand } = require('@aws-sdk/client-lambda');
 const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
 const { DynamoDBDocumentClient, QueryCommand } = require('@aws-sdk/lib-dynamodb');
+const { BedrockRuntimeClient, InvokeModelCommand } = require('@aws-sdk/client-bedrock-runtime');
 
 const lambdaClient = new LambdaClient({ region: 'us-east-2' });
 const ddbClient = new DynamoDBClient({ region: 'us-east-2' });
 const docClient = DynamoDBDocumentClient.from(ddbClient);
+const bedrockClient = new BedrockRuntimeClient({ region: 'us-east-1' });
 const VERIFY_TOKEN = process.env.VERIFY_TOKEN || 'finanzas-verify-token';
 
 exports.handler = async (event) => {
@@ -160,38 +162,49 @@ async function parseMessage(text, userId) {
 }
 
 async function categorize(description, userId) {
-  const desc = description.toLowerCase();
-  
   try {
-    // Obtener categorías custom del usuario
-    const customResult = await docClient.send(new QueryCommand({
-      TableName: 'finanzas-categories',
-      KeyConditionExpression: 'userId = :userId',
-      ExpressionAttributeValues: { ':userId': userId }
-    }));
-
-    // Obtener categorías default (usando userId especial 'DEFAULT')
+    // Obtener categorías disponibles
     const defaultResult = await docClient.send(new QueryCommand({
       TableName: 'finanzas-categories',
       KeyConditionExpression: 'userId = :userId',
       ExpressionAttributeValues: { ':userId': 'DEFAULT' }
     }));
 
-    // Combinar default + custom (custom tiene prioridad)
-    const allCategories = [...(defaultResult.Items || []), ...(customResult.Items || [])];
+    const customResult = await docClient.send(new QueryCommand({
+      TableName: 'finanzas-categories',
+      KeyConditionExpression: 'userId = :userId',
+      ExpressionAttributeValues: { ':userId': userId }
+    }));
 
-    // Buscar match (longest keyword first, skip single letters)
-    for (const category of allCategories) {
-      const validKeywords = (category.keywords || [])
-        .filter(k => k.length > 1) // Skip single letters like "u"
-        .sort((a, b) => b.length - a.length);
-      
-      if (validKeywords.some(k => desc.includes(k.toLowerCase()))) {
-        return category.name;
-      }
+    const allCategories = [...(defaultResult.Items || []), ...(customResult.Items || [])];
+    const categoryNames = allCategories.map(c => c.name).join(', ');
+
+    // Usar Bedrock para categorización inteligente
+    const prompt = `Categoriza el siguiente gasto en UNA de estas categorías: ${categoryNames}.
+
+Gasto: "${description}"
+
+Responde SOLO con el nombre de la categoría, sin explicaciones.`;
+
+    const response = await bedrockClient.send(new InvokeModelCommand({
+      modelId: 'amazon.nova-micro-v1:0',
+      contentType: 'application/json',
+      accept: 'application/json',
+      body: JSON.stringify({
+        messages: [{ role: 'user', content: [{ text: prompt }] }],
+        inferenceConfig: { maxTokens: 20, temperature: 0 }
+      })
+    }));
+
+    const result = JSON.parse(new TextDecoder().decode(response.body));
+    const category = result.output?.message?.content?.[0]?.text?.trim();
+    
+    // Validar que la categoría existe
+    if (allCategories.some(c => c.name === category)) {
+      return category;
     }
   } catch (error) {
-    console.error('Error categorizing:', error);
+    console.error('Bedrock error:', error);
   }
   
   return 'Otros';
