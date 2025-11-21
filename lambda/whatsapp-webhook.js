@@ -180,10 +180,13 @@ async function categorize(description, userId) {
     // Combinar default + custom (custom tiene prioridad)
     const allCategories = [...(defaultResult.Items || []), ...(customResult.Items || [])];
 
-    // Buscar match (longest keyword first para mayor precisión)
+    // Buscar match (longest keyword first, skip single letters)
     for (const category of allCategories) {
-      const sortedKeywords = (category.keywords || []).sort((a, b) => b.length - a.length);
-      if (sortedKeywords.some(k => desc.includes(k.toLowerCase()))) {
+      const validKeywords = (category.keywords || [])
+        .filter(k => k.length > 1) // Skip single letters like "u"
+        .sort((a, b) => b.length - a.length);
+      
+      if (validKeywords.some(k => desc.includes(k.toLowerCase()))) {
         return category.name;
       }
     }
