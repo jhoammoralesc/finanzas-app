@@ -1,6 +1,6 @@
 const { LambdaClient, InvokeCommand } = require('@aws-sdk/client-lambda');
 const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
-const { DynamoDBDocumentClient, QueryCommand } = require('@aws-sdk/lib-dynamodb');
+const { DynamoDBDocumentClient, QueryCommand, UpdateCommand } = require('@aws-sdk/lib-dynamodb');
 const { BedrockRuntimeClient, InvokeModelCommand } = require('@aws-sdk/client-bedrock-runtime');
 
 const lambdaClient = new LambdaClient({ region: 'us-east-2' });
@@ -191,13 +191,13 @@ async function categorize(description, userId) {
       }
     }
 
-    // 2. Fallback to Bedrock for ambiguous cases
+    // 2. Use Bedrock for ambiguous cases
     const categoryNames = allCategories.map(c => c.name).join(', ');
-    const prompt = `Categoriza el siguiente gasto en UNA de estas categorías: ${categoryNames}.
+    const prompt = `Categoriza este gasto en UNA categoría: ${categoryNames}
 
 Gasto: "${description}"
 
-Responde SOLO con el nombre de la categoría, sin explicaciones.`;
+Responde SOLO el nombre de la categoría.`;
 
     const response = await bedrockClient.send(new InvokeModelCommand({
       modelId: 'amazon.nova-micro-v1:0',
@@ -212,7 +212,11 @@ Responde SOLO con el nombre de la categoría, sin explicaciones.`;
     const result = JSON.parse(new TextDecoder().decode(response.body));
     const category = result.output?.message?.content?.[0]?.text?.trim();
     
-    if (allCategories.some(c => c.name === category)) {
+    // Validar y aprender
+    const matchedCategory = allCategories.find(c => c.name === category);
+    if (matchedCategory) {
+      // Extraer palabras clave de la descripción y agregarlas a la categoría
+      await learnFromTransaction(description, matchedCategory, userId);
       return category;
     }
   } catch (error) {
@@ -220,6 +224,35 @@ Responde SOLO con el nombre de la categoría, sin explicaciones.`;
   }
   
   return 'Otros';
+}
+
+async function learnFromTransaction(description, category, userId) {
+  try {
+    // Extraer palabras significativas (>3 letras, no números)
+    const words = description.toLowerCase()
+      .split(/\s+/)
+      .filter(w => w.length > 3 && !/^\d+$/.test(w));
+    
+    if (words.length === 0) return;
+
+    // Actualizar keywords de la categoría del usuario (crear custom si no existe)
+    await docClient.send(new UpdateCommand({
+      TableName: 'finanzas-categories',
+      Key: { userId, categoryId: category.categoryId },
+      UpdateExpression: 'SET keywords = list_append(if_not_exists(keywords, :empty), :words), #name = :name, #type = :type',
+      ExpressionAttributeNames: { '#name': 'name', '#type': 'type' },
+      ExpressionAttributeValues: {
+        ':words': words,
+        ':name': category.name,
+        ':type': category.type,
+        ':empty': []
+      }
+    }));
+    
+    console.log(`✨ Learned: ${words.join(', ')} → ${category.name}`);
+  } catch (error) {
+    console.error('Learning error:', error);
+  }
 }
 
 async function createTransaction(userId, data) {
