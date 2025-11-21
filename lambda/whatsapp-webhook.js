@@ -180,9 +180,10 @@ async function categorize(description, userId) {
     // Combinar default + custom (custom tiene prioridad)
     const allCategories = [...(defaultResult.Items || []), ...(customResult.Items || [])];
 
-    // Buscar match
+    // Buscar match (longest keyword first para mayor precisión)
     for (const category of allCategories) {
-      if (category.keywords?.some(k => desc.includes(k.toLowerCase()))) {
+      const sortedKeywords = (category.keywords || []).sort((a, b) => b.length - a.length);
+      if (sortedKeywords.some(k => desc.includes(k.toLowerCase()))) {
         return category.name;
       }
     }
