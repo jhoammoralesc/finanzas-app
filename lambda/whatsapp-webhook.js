@@ -67,7 +67,7 @@ async function processMessage(message, metadata) {
     return;
   }
 
-  const parsed = parseMessage(messageText);
+  const parsed = await parseMessage(messageText, userId);
   
   if (!parsed) {
     console.log('Message not recognized:', messageText);
@@ -107,18 +107,19 @@ async function getUserByWhatsApp(whatsappNumber) {
   return result.Items?.[0]?.userId;
 }
 
-function parseMessage(text) {
+async function parseMessage(text, userId) {
   const lower = text.toLowerCase();
 
   // Transaction patterns
   const expenseMatch = lower.match(/(?:gast[eé]|pagu[eé]|compr[eé])\s*\$?(\d+(?:\.\d+)?)\s+(?:en|de|para|por)\s+(.+)/i);
   if (expenseMatch) {
+    const description = expenseMatch[2].trim();
     return {
       type: 'transaction',
       data: {
         amount: parseFloat(expenseMatch[1]),
-        description: expenseMatch[2].trim(),
-        category: categorize(expenseMatch[2]),
+        description,
+        category: await categorize(description, userId),
         transactionType: 'expense'
       }
     };
@@ -158,20 +159,37 @@ function parseMessage(text) {
   return null;
 }
 
-function categorize(description) {
+async function categorize(description, userId) {
   const desc = description.toLowerCase();
-  const categories = {
-    'Alimentación': ['comida', 'almuerzo', 'cena', 'desayuno', 'restaurante', 'mercado', 'supermercado', 'pizza', 'hamburguesa', 'pollo', 'arroz', 'frutas', 'verduras', 'pan', 'café', 'bebida'],
-    'Transporte': ['taxi', 'uber', 'gasolina', 'bus', 'metro', 'transporte', 'pasaje', 'combustible', 'parqueadero', 'peaje'],
-    'Entretenimiento': ['cine', 'netflix', 'spotify', 'bar', 'fiesta', 'concierto', 'juego', 'videojuego', 'streaming'],
-    'Salud': ['farmacia', 'medicina', 'doctor', 'hospital', 'consulta', 'medicamento', 'droga', 'vitamina'],
-    'Educación': ['libro', 'curso', 'universidad', 'colegio', 'matrícula', 'estudio', 'clase'],
-    'Servicios': ['luz', 'agua', 'internet', 'teléfono', 'cable', 'arriendo', 'alquiler', 'gas']
-  };
+  
+  try {
+    // Obtener categorías custom del usuario
+    const customResult = await docClient.send(new QueryCommand({
+      TableName: 'finanzas-categories',
+      KeyConditionExpression: 'userId = :userId',
+      ExpressionAttributeValues: { ':userId': userId }
+    }));
 
-  for (const [cat, keywords] of Object.entries(categories)) {
-    if (keywords.some(k => desc.includes(k))) return cat;
+    // Obtener categorías default (usando userId especial 'DEFAULT')
+    const defaultResult = await docClient.send(new QueryCommand({
+      TableName: 'finanzas-categories',
+      KeyConditionExpression: 'userId = :userId',
+      ExpressionAttributeValues: { ':userId': 'DEFAULT' }
+    }));
+
+    // Combinar default + custom (custom tiene prioridad)
+    const allCategories = [...(defaultResult.Items || []), ...(customResult.Items || [])];
+
+    // Buscar match
+    for (const category of allCategories) {
+      if (category.keywords?.some(k => desc.includes(k.toLowerCase()))) {
+        return category.name;
+      }
+    }
+  } catch (error) {
+    console.error('Error categorizing:', error);
   }
+  
   return 'Otros';
 }
 
