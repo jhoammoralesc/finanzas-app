@@ -162,42 +162,47 @@ async function parseMessage(text, userId) {
 }
 
 async function categorize(description, userId) {
-  const desc = description.toLowerCase();
-  
   try {
-    // Obtener categorías
-    const defaultResult = await docClient.send(new QueryCommand({
-      TableName: 'finanzas-categories',
-      KeyConditionExpression: 'userId = :userId',
-      ExpressionAttributeValues: { ':userId': 'DEFAULT' }
-    }));
-
-    const customResult = await docClient.send(new QueryCommand({
+    // 1. Consultar categorías del usuario
+    const result = await docClient.send(new QueryCommand({
       TableName: 'finanzas-categories',
       KeyConditionExpression: 'userId = :userId',
       ExpressionAttributeValues: { ':userId': userId }
     }));
 
-    const allCategories = [...(defaultResult.Items || []), ...(customResult.Items || [])];
+    const categories = result.Items || [];
+    const desc = description.toLowerCase();
 
-    // 1. Try keywords first (fast, free)
-    for (const category of allCategories) {
-      const validKeywords = (category.keywords || [])
+    // 2. Buscar por keywords
+    for (const category of categories) {
+      const keywords = (category.keywords || [])
         .filter(k => k.length > 1)
         .sort((a, b) => b.length - a.length);
       
-      if (validKeywords.some(k => desc.includes(k.toLowerCase()))) {
+      if (keywords.some(k => desc.includes(k.toLowerCase()))) {
         return category.name;
       }
     }
 
-    // 2. Use Bedrock for ambiguous cases
-    const categoryNames = allCategories.map(c => c.name).join(', ');
-    const prompt = `Categoriza este gasto en UNA categoría: ${categoryNames}
+    // 3. Bedrock analiza y crea/asigna categoría
+    const prompt = categories.length > 0 
+      ? `Categoriza este gasto. Categorías existentes: ${categories.map(c => c.name).join(', ')}
 
 Gasto: "${description}"
 
-Responde SOLO el nombre de la categoría.`;
+REGLAS:
+- PROHIBIDO "Otros" - crea categoría específica
+- Solo usa existente si 100% compatible
+- Ejemplos: "productos de aseo"→"Hogar", "fiesta"→"Entretenimiento"
+
+Responde SOLO con JSON, sin explicaciones:
+{"category": "nombre", "isNew": true/false, "keywords": ["palabra1", "palabra2"]}`
+      : `Categoriza este gasto: "${description}"
+
+PROHIBIDO "Otros". Crea categoría específica.
+
+Responde SOLO JSON:
+{"category": "nombre", "isNew": true, "keywords": ["palabra1", "palabra2"]}`;
 
     const response = await bedrockClient.send(new InvokeModelCommand({
       modelId: 'amazon.nova-micro-v1:0',
@@ -205,53 +210,60 @@ Responde SOLO el nombre de la categoría.`;
       accept: 'application/json',
       body: JSON.stringify({
         messages: [{ role: 'user', content: [{ text: prompt }] }],
-        inferenceConfig: { maxTokens: 20, temperature: 0 }
+        inferenceConfig: { maxTokens: 100, temperature: 0 }
       })
     }));
 
-    const result = JSON.parse(new TextDecoder().decode(response.body));
-    const category = result.output?.message?.content?.[0]?.text?.trim();
-    
-    // Validar y aprender
-    const matchedCategory = allCategories.find(c => c.name === category);
-    if (matchedCategory) {
-      // Extraer palabras clave de la descripción y agregarlas a la categoría
-      await learnFromTransaction(description, matchedCategory, userId);
-      return category;
+    const bedrockResult = JSON.parse(new TextDecoder().decode(response.body));
+    const text = bedrockResult.output?.message?.content?.[0]?.text?.trim();
+    console.log('🤖 Bedrock response:', text);
+    const analysis = JSON.parse(text.match(/\{[\s\S]*\}/)?.[0] || '{}');
+    console.log('📊 Analysis:', JSON.stringify(analysis));
+
+    // Validar que no sea "Otros"
+    if (analysis.category?.toLowerCase() === 'otros') {
+      console.log('⚠️ Bedrock returned "Otros", forcing specific category');
+      analysis.category = 'Hogar';
+      analysis.isNew = true;
+      analysis.keywords = description.toLowerCase().split(/\s+/).filter(w => w.length > 3).slice(0, 3);
     }
+
+    // 4. Crear o actualizar categoría
+    if (analysis.isNew) {
+      const categoryId = analysis.category.toLowerCase().replace(/\s+/g, '-');
+      await docClient.send(new UpdateCommand({
+        TableName: 'finanzas-categories',
+        Key: { userId, categoryId },
+        UpdateExpression: 'SET #name = :name, #type = :type, keywords = :keywords, createdAt = :now',
+        ExpressionAttributeNames: { '#name': 'name', '#type': 'type' },
+        ExpressionAttributeValues: {
+          ':name': analysis.category,
+          ':type': 'expense',
+          ':keywords': analysis.keywords || [],
+          ':now': new Date().toISOString()
+        }
+      }));
+      console.log(`✨ Nueva categoría: ${analysis.category}`);
+    } else {
+      const existing = categories.find(c => c.name === analysis.category);
+      if (existing && analysis.keywords?.length > 0) {
+        await docClient.send(new UpdateCommand({
+          TableName: 'finanzas-categories',
+          Key: { userId, categoryId: existing.categoryId },
+          UpdateExpression: 'SET keywords = list_append(if_not_exists(keywords, :empty), :words)',
+          ExpressionAttributeValues: {
+            ':words': analysis.keywords,
+            ':empty': []
+          }
+        }));
+        console.log(`✨ Keywords: ${analysis.keywords.join(', ')} → ${analysis.category}`);
+      }
+    }
+
+    return analysis.category || 'Otros';
   } catch (error) {
     console.error('Categorization error:', error);
-  }
-  
-  return 'Otros';
-}
-
-async function learnFromTransaction(description, category, userId) {
-  try {
-    // Extraer palabras significativas (>3 letras, no números)
-    const words = description.toLowerCase()
-      .split(/\s+/)
-      .filter(w => w.length > 3 && !/^\d+$/.test(w));
-    
-    if (words.length === 0) return;
-
-    // Actualizar keywords de la categoría del usuario (crear custom si no existe)
-    await docClient.send(new UpdateCommand({
-      TableName: 'finanzas-categories',
-      Key: { userId, categoryId: category.categoryId },
-      UpdateExpression: 'SET keywords = list_append(if_not_exists(keywords, :empty), :words), #name = :name, #type = :type',
-      ExpressionAttributeNames: { '#name': 'name', '#type': 'type' },
-      ExpressionAttributeValues: {
-        ':words': words,
-        ':name': category.name,
-        ':type': category.type,
-        ':empty': []
-      }
-    }));
-    
-    console.log(`✨ Learned: ${words.join(', ')} → ${category.name}`);
-  } catch (error) {
-    console.error('Learning error:', error);
+    return 'Otros';
   }
 }
 
