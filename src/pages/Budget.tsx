@@ -14,7 +14,7 @@ const Budget = () => {
   const [budgets, setBudgets] = useState<Budget[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
-  const [editingBudget, setEditingBudget] = useState<Budget | null>(null);
+  const [editingBudget, setEditingBudget] = useState<string | null>(null);
   const [newBudget, setNewBudget] = useState({ category: '', amount: '' });
 
   useEffect(() => {
