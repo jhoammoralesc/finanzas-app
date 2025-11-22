@@ -3,11 +3,18 @@ import { fetchAuthSession } from 'aws-amplify/auth';
 
 const API_URL = 'https://d5b928o88l.execute-api.us-east-2.amazonaws.com/prod';
 
+interface Budget {
+  budgetId: string;
+  category: string;
+  amount: number;
+  spent: number;
+}
+
 const Budget = () => {
-  const [budgets, setBudgets] = useState([]);
+  const [budgets, setBudgets] = useState<Budget[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
-  const [editingBudget, setEditingBudget] = useState(null);
+  const [editingBudget, setEditingBudget] = useState<Budget | null>(null);
   const [newBudget, setNewBudget] = useState({ category: '', amount: '' });
 
   useEffect(() => {
