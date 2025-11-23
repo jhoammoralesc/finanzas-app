@@ -24,6 +24,11 @@ const Settings = () => {
   const [isLinked, setIsLinked] = useState(false);
   const [showOtpInput, setShowOtpInput] = useState(false);
   const [otp, setOtp] = useState('');
+  const [telegramUsername, setTelegramUsername] = useState('');
+  const [isTelegramLinked, setIsTelegramLinked] = useState(false);
+  const [showTelegramOtp, setShowTelegramOtp] = useState(false);
+  const [telegramOtp, setTelegramOtp] = useState('');
+  const [telegramMessage, setTelegramMessage] = useState('');
 
   const countryCodes = [
     { code: '+57', country: 'Colombia' },
@@ -53,6 +58,10 @@ const Settings = () => {
         if (data.user?.whatsappNumber && data.user?.verified) {
           setSettings(prev => ({ ...prev, whatsappNumber: data.user.whatsappNumber }));
           setIsLinked(true);
+        }
+        if (data.user?.telegramChatId && data.user?.verified) {
+          setTelegramUsername(data.user.telegramChatId);
+          setIsTelegramLinked(true);
         }
       }
     } catch (error) {
@@ -121,6 +130,69 @@ const Settings = () => {
       }
     } catch (error) {
       setMessage('❌ Error de conexión');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleLinkTelegram = async () => {
+    setLoading(true);
+    setTelegramMessage('');
+
+    try {
+      const session = await fetchAuthSession();
+      const token = session.tokens?.idToken?.toString();
+
+      const response = await fetch('https://d5b928o88l.execute-api.us-east-2.amazonaws.com/prod/users/link-telegram', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': token || ''
+        },
+        body: JSON.stringify({ telegramUsername })
+      });
+
+      if (response.ok) {
+        setTelegramMessage('✅ Código enviado. Revisa tu chat de Telegram con @FinanzasAppBot');
+        setShowTelegramOtp(true);
+      } else {
+        const data = await response.json();
+        setTelegramMessage(`❌ ${data.error || 'Error al vincular'}`);
+      }
+    } catch (error) {
+      setTelegramMessage('❌ Error de conexión');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleVerifyTelegram = async () => {
+    setLoading(true);
+    setTelegramMessage('');
+
+    try {
+      const session = await fetchAuthSession();
+      const token = session.tokens?.idToken?.toString();
+
+      const response = await fetch('https://d5b928o88l.execute-api.us-east-2.amazonaws.com/prod/users/verify-telegram', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': token || ''
+        },
+        body: JSON.stringify({ otp: telegramOtp })
+      });
+
+      if (response.ok) {
+        setTelegramMessage('✅ Telegram verificado correctamente');
+        setIsTelegramLinked(true);
+        setShowTelegramOtp(false);
+      } else {
+        const data = await response.json();
+        setTelegramMessage(`❌ ${data.error || 'Código incorrecto'}`);
+      }
+    } catch (error) {
+      setTelegramMessage('❌ Error de conexión');
     } finally {
       setLoading(false);
     }
@@ -267,6 +339,103 @@ const Settings = () => {
               <li><code>Saldo</code> - Ver balance actual</li>
               <li><code>Reporte</code> - Generar reporte del mes</li>
               <li><code>Presupuesto</code> - Ver estado del presupuesto</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      {/* Configuración de Telegram */}
+      <div className="settings-section">
+        <h3>✈️ Telegram</h3>
+        <div className="whatsapp-config">
+          <div className="form-group">
+            <label>Usuario de Telegram</label>
+            <input
+              type="text"
+              value={telegramUsername}
+              onChange={(e) => setTelegramUsername(e.target.value)}
+              placeholder="@tu_usuario"
+              disabled={isTelegramLinked}
+            />
+            <small style={{ color: '#666', marginTop: '0.5rem', display: 'block' }}>
+              Primero inicia chat con @FinanzasAppBot en Telegram
+            </small>
+          </div>
+
+          {!isTelegramLinked && !showTelegramOtp && (
+            <button 
+              onClick={handleLinkTelegram}
+              disabled={loading || !telegramUsername}
+              className="btn-primary"
+              style={{ marginBottom: '1rem' }}
+            >
+              {loading ? 'Enviando código...' : '🔗 Vincular Telegram'}
+            </button>
+          )}
+
+          {showTelegramOtp && !isTelegramLinked && (
+            <div style={{ marginTop: '1rem' }}>
+              <div className="form-group">
+                <label>Código de verificación</label>
+                <input
+                  type="text"
+                  value={telegramOtp}
+                  onChange={(e) => setTelegramOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  placeholder="123456"
+                  maxLength={6}
+                  style={{ width: '200px' }}
+                />
+              </div>
+              <button 
+                onClick={handleVerifyTelegram}
+                disabled={loading || telegramOtp.length !== 6}
+                className="btn-primary"
+                style={{ marginBottom: '1rem' }}
+              >
+                {loading ? 'Verificando...' : '✓ Verificar Código'}
+              </button>
+            </div>
+          )}
+
+          {telegramMessage && (
+            <p style={{ 
+              color: telegramMessage.includes('✅') ? 'green' : 'red',
+              marginBottom: '1rem'
+            }}>
+              {telegramMessage}
+            </p>
+          )}
+          
+          {isTelegramLinked && (
+            <>
+              <div className="whatsapp-status">
+                <span className="status-indicator connected">🟢</span>
+                <span>Bot conectado y funcionando</span>
+              </div>
+              
+              <a 
+                href="https://t.me/FinanzasAppBot" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="btn-primary"
+                style={{ 
+                  display: 'inline-block', 
+                  marginTop: '1rem',
+                  textDecoration: 'none',
+                  textAlign: 'center'
+                }}
+              >
+                💬 Abrir Chat con el Bot
+              </a>
+            </>
+          )}
+          
+          <div className="whatsapp-help">
+            <h4>Comandos disponibles:</h4>
+            <ul>
+              <li><code>Gasté [monto] en [descripción]</code> - Registrar gasto</li>
+              <li><code>Recibí [monto] por [descripción]</code> - Registrar ingreso</li>
+              <li><code>Reporte</code> - Generar reporte del mes</li>
             </ul>
           </div>
         </div>
