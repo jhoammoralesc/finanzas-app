@@ -28,17 +28,17 @@ exports.handler = async (event) => {
 
 async function linkMessaging(userId, event, headers, platform) {
   const data = JSON.parse(event.body);
-  const identifier = platform === 'whatsapp' ? data.whatsappNumber : data.telegramUsername;
-  if (!identifier) return { statusCode: 400, headers, body: JSON.stringify({ error: `${platform} identifier required` }) };
+  const phoneNumber = platform === 'whatsapp' ? data.whatsappNumber : data.telegramNumber;
+  if (!phoneNumber) return { statusCode: 400, headers, body: JSON.stringify({ error: 'Número de teléfono requerido' }) };
 
-  const field = platform === 'whatsapp' ? 'whatsappNumber' : 'telegramChatId';
-  const indexName = platform === 'whatsapp' ? 'whatsapp-index' : 'telegram-index';
+  const field = platform === 'whatsapp' ? 'whatsappNumber' : 'telegramNumber';
+  const indexName = platform === 'whatsapp' ? 'whatsapp-index' : 'telegram-number-index';
   
   const existing = await docClient.send(new QueryCommand({
     TableName: 'finanzas-users',
     IndexName: indexName,
     KeyConditionExpression: `${field} = :id`,
-    ExpressionAttributeValues: { ':id': identifier.replace(/\s/g, '') }
+    ExpressionAttributeValues: { ':id': phoneNumber.replace(/\s/g, '') }
   }));
 
   if (existing.Items?.length > 0 && existing.Items[0].userId !== userId) {
@@ -52,7 +52,7 @@ async function linkMessaging(userId, event, headers, platform) {
     TableName: 'finanzas-users',
     Item: {
       userId,
-      [field]: identifier.replace(/\s/g, ''),
+      [field]: phoneNumber.replace(/\s/g, ''),
       otp,
       expiresAt,
       verified: false,
@@ -60,8 +60,10 @@ async function linkMessaging(userId, event, headers, platform) {
     }
   }));
 
-  await sendOTP(platform, identifier, otp);
-  return { statusCode: 200, headers, body: JSON.stringify({ success: true, message: `Código enviado a ${platform}` }) };
+  const sent = await sendOTP(platform, phoneNumber, otp);
+  if (!sent) return { statusCode: 500, headers, body: JSON.stringify({ error: 'Error enviando código' }) };
+  
+  return { statusCode: 200, headers, body: JSON.stringify({ success: true, message: `Código enviado a ${platform}`, botLink: platform === 'telegram' ? 'https://t.me/FinanzasAppBot' : null }) };
 }
 
 async function verifyMessaging(userId, event, headers, platform) {
@@ -83,21 +85,27 @@ async function verifyMessaging(userId, event, headers, platform) {
   return { statusCode: 200, headers, body: JSON.stringify({ success: true, message: `${platform} verificado` }) };
 }
 
-async function sendOTP(platform, identifier, otp) {
+async function sendOTP(platform, phoneNumber, otp) {
+  const normalized = phoneNumber.replace(/\s/g, '').replace(/^\+/, '');
+  
   if (platform === 'whatsapp') {
     const token = process.env.WHATSAPP_TOKEN;
     const phoneId = process.env.WHATSAPP_PHONE_ID;
-    if (!token) { console.log('WhatsApp not configured, OTP:', otp); return; }
-    const normalized = identifier.replace(/\s/g, '').replace(/^\+/, '');
-    await fetch(`https://graph.facebook.com/v18.0/${phoneId}/messages`, {
+    if (!token) { console.log('WhatsApp not configured, OTP:', otp); return false; }
+    
+    const response = await fetch(`https://graph.facebook.com/v18.0/${phoneId}/messages`, {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ messaging_product: 'whatsapp', to: normalized, text: { body: `🔐 Código FinanzasApp: ${otp}\nVálido 10 min.` } })
     });
+    return response.ok;
   } else if (platform === 'telegram') {
-    console.log(`Telegram OTP for ${identifier}: ${otp}`);
-    // Usuario debe iniciar chat con el bot primero para obtener chat_id
+    // Telegram requiere que el usuario inicie chat primero
+    // El OTP se enviará cuando el usuario escriba al bot
+    console.log(`Telegram OTP pendiente para ${normalized}: ${otp}`);
+    return true;
   }
+  return false;
 }
 
 async function getUser(userId, headers) {

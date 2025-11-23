@@ -59,13 +59,58 @@ async function handleTelegram(body) {
   const chatId = message.chat.id.toString();
   const text = message.text || '';
   
-  const userId = await getUserByPhone(chatId, 'telegram');
-  if (!userId) {
-    await sendMessage('telegram', chatId, '❌ Usuario no registrado. Vincula tu Telegram desde la app web.');
+  // Buscar si hay un usuario pendiente de verificación con este chat_id o número
+  let user = await getUserByChatId(chatId);
+  
+  if (!user) {
+    // Buscar usuario pendiente por número de teléfono (si Telegram proporciona el número)
+    const phoneNumber = message.from?.phone_number;
+    if (phoneNumber) {
+      user = await getUserPendingByPhone(phoneNumber);
+      if (user) {
+        // Asociar chat_id y enviar OTP
+        await docClient.send(new UpdateCommand({
+          TableName: 'finanzas-users',
+          Key: { userId: user.userId },
+          UpdateExpression: 'SET telegramChatId = :chatId',
+          ExpressionAttributeValues: { ':chatId': chatId }
+        }));
+        
+        if (user.otp && user.expiresAt > Date.now()) {
+          await sendMessage('telegram', chatId, `🔐 Código FinanzasApp: ${user.otp}\nVálido 10 min.`);
+          return;
+        }
+      }
+    }
+    
+    await sendMessage('telegram', chatId, '❌ Usuario no registrado. Vincula tu Telegram desde la app web: https://d2lrwv7cxtby1n.amplifyapp.com');
     return;
   }
   
-  await processMessage(userId, text, 'telegram', chatId);
+  await processMessage(user.userId, text, 'telegram', chatId);
+}
+
+async function getUserPendingByPhone(phoneNumber) {
+  const normalized = phoneNumber.replace(/\s/g, '').replace(/^\+/, '');
+  const result = await docClient.send(new QueryCommand({
+    TableName: 'finanzas-users',
+    IndexName: 'telegram-number-index',
+    KeyConditionExpression: 'telegramNumber = :phone',
+    ExpressionAttributeValues: { ':phone': normalized }
+  }));
+  return result.Items?.[0];
+}
+
+async function getUserByChatId(chatId) {
+  const result = await docClient.send(new QueryCommand({
+    TableName: 'finanzas-users',
+    IndexName: 'telegram-index',
+    KeyConditionExpression: 'telegramChatId = :chatId',
+    FilterExpression: 'verified = :verified',
+    ExpressionAttributeValues: { ':chatId': chatId, ':verified': true }
+  }));
+  
+  return result.Items?.[0];
 }
 
 async function getUserByPhone(identifier, platform) {

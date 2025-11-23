@@ -24,11 +24,12 @@ const Settings = () => {
   const [isLinked, setIsLinked] = useState(false);
   const [showOtpInput, setShowOtpInput] = useState(false);
   const [otp, setOtp] = useState('');
-  const [telegramUsername, setTelegramUsername] = useState('');
+  const [telegramNumber, setTelegramNumber] = useState('');
   const [isTelegramLinked, setIsTelegramLinked] = useState(false);
   const [showTelegramOtp, setShowTelegramOtp] = useState(false);
   const [telegramOtp, setTelegramOtp] = useState('');
   const [telegramMessage, setTelegramMessage] = useState('');
+  const [telegramCountryCode, setTelegramCountryCode] = useState('+57');
 
   const countryCodes = [
     { code: '+57', country: 'Colombia' },
@@ -59,8 +60,8 @@ const Settings = () => {
           setSettings(prev => ({ ...prev, whatsappNumber: data.user.whatsappNumber }));
           setIsLinked(true);
         }
-        if (data.user?.telegramChatId && data.user?.verified) {
-          setTelegramUsername(data.user.telegramChatId);
+        if (data.user?.telegramNumber && data.user?.verified) {
+          setTelegramNumber(data.user.telegramNumber);
           setIsTelegramLinked(true);
         }
       }
@@ -142,6 +143,7 @@ const Settings = () => {
     try {
       const session = await fetchAuthSession();
       const token = session.tokens?.idToken?.toString();
+      const fullNumber = telegramCountryCode + telegramNumber.replace(/\s/g, '');
 
       const response = await fetch('https://d5b928o88l.execute-api.us-east-2.amazonaws.com/prod/users/link-telegram', {
         method: 'POST',
@@ -149,11 +151,11 @@ const Settings = () => {
           'Content-Type': 'application/json',
           'Authorization': token || ''
         },
-        body: JSON.stringify({ telegramUsername })
+        body: JSON.stringify({ telegramNumber: fullNumber })
       });
 
       if (response.ok) {
-        setTelegramMessage('✅ Código enviado. Revisa tu chat de Telegram con @FinanzasAppBot');
+        setTelegramMessage('✅ Número registrado. Abre @FinanzasAppBot en Telegram para recibir tu código');
         setShowTelegramOtp(true);
       } else {
         const data = await response.json();
@@ -349,32 +351,65 @@ const Settings = () => {
         <h3>✈️ Telegram</h3>
         <div className="whatsapp-config">
           <div className="form-group">
-            <label>Usuario de Telegram</label>
-            <input
-              type="text"
-              value={telegramUsername}
-              onChange={(e) => setTelegramUsername(e.target.value)}
-              placeholder="@tu_usuario"
-              disabled={isTelegramLinked}
-            />
-            <small style={{ color: '#666', marginTop: '0.5rem', display: 'block' }}>
-              Primero inicia chat con @FinanzasAppBot en Telegram
-            </small>
+            <label>Número de Telegram</label>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <select 
+                value={telegramCountryCode}
+                onChange={(e) => setTelegramCountryCode(e.target.value)}
+                disabled={isTelegramLinked}
+                style={{ width: '120px' }}
+              >
+                {countryCodes.map(c => (
+                  <option key={c.code} value={c.code}>{c.code} {c.country}</option>
+                ))}
+              </select>
+              <input
+                type="tel"
+                value={telegramNumber}
+                onChange={(e) => setTelegramNumber(e.target.value.replace(/\D/g, ''))}
+                placeholder="3001234567"
+                disabled={isTelegramLinked}
+                style={{ flex: 1 }}
+              />
+            </div>
           </div>
 
           {!isTelegramLinked && !showTelegramOtp && (
-            <button 
-              onClick={handleLinkTelegram}
-              disabled={loading || !telegramUsername}
-              className="btn-primary"
-              style={{ marginBottom: '1rem' }}
-            >
-              {loading ? 'Enviando código...' : '🔗 Vincular Telegram'}
-            </button>
+            <>
+              <button 
+                onClick={handleLinkTelegram}
+                disabled={loading || !telegramNumber}
+                className="btn-primary"
+                style={{ marginBottom: '1rem' }}
+              >
+                {loading ? 'Registrando...' : '🔗 Vincular Telegram'}
+              </button>
+              <small style={{ color: '#666', display: 'block', marginBottom: '1rem' }}>
+                Después de registrar, abre el bot para recibir tu código
+              </small>
+            </>
           )}
 
           {showTelegramOtp && !isTelegramLinked && (
             <div style={{ marginTop: '1rem' }}>
+              <div style={{ 
+                background: '#e3f2fd', 
+                padding: '1rem', 
+                borderRadius: '8px', 
+                marginBottom: '1rem',
+                border: '1px solid #2196f3'
+              }}>
+                <p style={{ margin: '0 0 0.5rem 0', fontWeight: 'bold', color: '#1976d2' }}>
+                  📱 Pasos para recibir tu código:
+                </p>
+                <ol style={{ margin: 0, paddingLeft: '1.5rem', color: '#555' }}>
+                  <li>Abre Telegram en tu teléfono</li>
+                  <li>Busca <strong>@FinanzasAppBot</strong> o <a href="https://t.me/FinanzasAppBot" target="_blank" rel="noopener noreferrer" style={{ color: '#2196f3' }}>haz clic aquí</a></li>
+                  <li>Presiona "Iniciar" o envía cualquier mensaje</li>
+                  <li>Recibirás tu código de 6 dígitos</li>
+                </ol>
+              </div>
+              
               <div className="form-group">
                 <label>Código de verificación</label>
                 <input
