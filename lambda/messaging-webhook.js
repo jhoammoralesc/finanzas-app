@@ -1,6 +1,6 @@
 const { LambdaClient, InvokeCommand } = require('@aws-sdk/client-lambda');
 const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
-const { DynamoDBDocumentClient, QueryCommand, UpdateCommand } = require('@aws-sdk/lib-dynamodb');
+const { DynamoDBDocumentClient, QueryCommand, UpdateCommand, ScanCommand } = require('@aws-sdk/lib-dynamodb');
 const { BedrockRuntimeClient, InvokeModelCommand } = require('@aws-sdk/client-bedrock-runtime');
 
 const lambdaClient = new LambdaClient({ region: 'us-east-2' });
@@ -10,9 +10,8 @@ const bedrockClient = new BedrockRuntimeClient({ region: 'us-east-1' });
 
 exports.handler = async (event) => {
   console.log('Event:', JSON.stringify(event, null, 2));
-  const body = event.body ? JSON.parse(event.body) : {};
-
-  // WhatsApp webhook verification
+  
+  // WhatsApp webhook verification (GET)
   if (event.httpMethod === 'GET') {
     const mode = event.queryStringParameters?.['hub.mode'];
     const token = event.queryStringParameters?.['hub.verify_token'];
@@ -22,6 +21,8 @@ exports.handler = async (event) => {
     }
     return { statusCode: 403, body: 'Forbidden' };
   }
+
+  const body = event.body ? JSON.parse(event.body) : {};
 
   // Detect platform
   if (body.object === 'whatsapp_business_account') {
@@ -57,37 +58,44 @@ async function handleTelegram(body) {
   if (!message) return;
   
   const chatId = message.chat.id.toString();
-  const text = message.text || '';
+  const text = (message.text || '').trim();
   
-  // Buscar si hay un usuario pendiente de verificación con este chat_id o número
+  // Buscar usuario verificado
   let user = await getUserByChatId(chatId);
   
   if (!user) {
-    // Buscar usuario pendiente por número de teléfono (si Telegram proporciona el número)
-    const phoneNumber = message.from?.phone_number;
-    if (phoneNumber) {
-      user = await getUserPendingByPhone(phoneNumber);
-      if (user) {
-        // Asociar chat_id y enviar OTP
+    // Verificar si el texto es un OTP (6 dígitos)
+    if (/^\d{6}$/.test(text)) {
+      const pendingUser = await getUserPendingByOTP(text);
+      if (pendingUser && pendingUser.expiresAt > Date.now()) {
+        // Asociar chatId y verificar
         await docClient.send(new UpdateCommand({
           TableName: 'finanzas-users',
-          Key: { userId: user.userId },
-          UpdateExpression: 'SET telegramChatId = :chatId',
-          ExpressionAttributeValues: { ':chatId': chatId }
+          Key: { userId: pendingUser.userId },
+          UpdateExpression: 'SET telegramChatId = :chatId, verified = :verified REMOVE otp, expiresAt',
+          ExpressionAttributeValues: { ':chatId': chatId, ':verified': true }
         }));
-        
-        if (user.otp && user.expiresAt > Date.now()) {
-          await sendMessage('telegram', chatId, `🔐 Código FinanzasApp: ${user.otp}\nVálido 10 min.`);
-          return;
-        }
+        await sendMessage('telegram', chatId, '✅ Telegram vinculado correctamente.\n\nYa puedes enviar transacciones:\n• Gasté 25000 en almuerzo\n• Recibí 1000000 de salario');
+        return;
       }
+      await sendMessage('telegram', chatId, '❌ Código inválido o expirado.');
+      return;
     }
     
-    await sendMessage('telegram', chatId, '❌ Usuario no registrado. Vincula tu Telegram desde la app web: https://d2lrwv7cxtby1n.amplifyapp.com');
+    await sendMessage('telegram', chatId, '❌ No estás registrado.\n\n📱 Para vincular:\n1. Ve a https://d2lrwv7cxtby1n.amplifyapp.com\n2. Vincula tu Telegram\n3. Envía el código aquí');
     return;
   }
   
   await processMessage(user.userId, text, 'telegram', chatId);
+}
+
+async function getUserPendingByOTP(otp) {
+  const result = await docClient.send(new ScanCommand({
+    TableName: 'finanzas-users',
+    FilterExpression: 'otp = :otp AND verified = :verified',
+    ExpressionAttributeValues: { ':otp': otp, ':verified': false }
+  }));
+  return result.Items?.[0];
 }
 
 async function getUserPendingByPhone(phoneNumber) {

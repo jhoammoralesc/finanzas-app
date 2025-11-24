@@ -26,7 +26,6 @@ const Settings = () => {
   const [otp, setOtp] = useState('');
   const [telegramNumber, setTelegramNumber] = useState('');
   const [isTelegramLinked, setIsTelegramLinked] = useState(false);
-  const [showTelegramOtp, setShowTelegramOtp] = useState(false);
   const [telegramOtp, setTelegramOtp] = useState('');
   const [telegramMessage, setTelegramMessage] = useState('');
   const [telegramCountryCode, setTelegramCountryCode] = useState('+57');
@@ -45,6 +44,22 @@ const Settings = () => {
     loadUserData();
   }, []);
 
+  useEffect(() => {
+    // Polling cuando hay OTP pendiente
+    if (telegramOtp && !isTelegramLinked) {
+      const interval = setInterval(() => {
+        loadUserData();
+      }, 3000);
+      return () => clearInterval(interval);
+    }
+    if (showOtpInput && !isLinked) {
+      const interval = setInterval(() => {
+        loadUserData();
+      }, 3000);
+      return () => clearInterval(interval);
+    }
+  }, [telegramOtp, isTelegramLinked, showOtpInput, isLinked]);
+
   const loadUserData = async () => {
     try {
       const session = await fetchAuthSession();
@@ -57,12 +72,30 @@ const Settings = () => {
       if (response.ok) {
         const data = await response.json();
         if (data.user?.whatsappNumber && data.user?.verified) {
-          setSettings(prev => ({ ...prev, whatsappNumber: data.user.whatsappNumber }));
+          const whatsappFull = data.user.whatsappNumber;
+          const whatsappCode = countryCodes.find(c => whatsappFull.startsWith(c.code));
+          if (whatsappCode) {
+            setSettings(prev => ({ 
+              ...prev, 
+              countryCode: whatsappCode.code,
+              whatsappNumber: whatsappFull.substring(whatsappCode.code.length)
+            }));
+          }
           setIsLinked(true);
+          setShowOtpInput(false);
+          setOtp('');
+          setMessage('✅ WhatsApp vinculado correctamente');
         }
         if (data.user?.telegramNumber && data.user?.verified) {
-          setTelegramNumber(data.user.telegramNumber);
+          const telegramFull = data.user.telegramNumber;
+          const telegramCode = countryCodes.find(c => telegramFull.startsWith(c.code));
+          if (telegramCode) {
+            setTelegramCountryCode(telegramCode.code);
+            setTelegramNumber(telegramFull.substring(telegramCode.code.length));
+          }
           setIsTelegramLinked(true);
+          setTelegramOtp(''); // Limpiar OTP cuando se confirma vinculación
+          setTelegramMessage('✅ Telegram vinculado correctamente');
         }
       }
     } catch (error) {
@@ -155,43 +188,12 @@ const Settings = () => {
       });
 
       if (response.ok) {
-        setTelegramMessage('✅ Número registrado. Abre @FinanzasAppBot en Telegram para recibir tu código');
-        setShowTelegramOtp(true);
+        const data = await response.json();
+        setTelegramOtp(data.otp);
+        setTelegramMessage(`✅ ${data.message}`);
       } else {
         const data = await response.json();
         setTelegramMessage(`❌ ${data.error || 'Error al vincular'}`);
-      }
-    } catch (error) {
-      setTelegramMessage('❌ Error de conexión');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleVerifyTelegram = async () => {
-    setLoading(true);
-    setTelegramMessage('');
-
-    try {
-      const session = await fetchAuthSession();
-      const token = session.tokens?.idToken?.toString();
-
-      const response = await fetch('https://d5b928o88l.execute-api.us-east-2.amazonaws.com/prod/users/verify-telegram', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': token || ''
-        },
-        body: JSON.stringify({ otp: telegramOtp })
-      });
-
-      if (response.ok) {
-        setTelegramMessage('✅ Telegram verificado correctamente');
-        setIsTelegramLinked(true);
-        setShowTelegramOtp(false);
-      } else {
-        const data = await response.json();
-        setTelegramMessage(`❌ ${data.error || 'Código incorrecto'}`);
       }
     } catch (error) {
       setTelegramMessage('❌ Error de conexión');
@@ -374,7 +376,7 @@ const Settings = () => {
             </div>
           </div>
 
-          {!isTelegramLinked && !showTelegramOtp && (
+          {!isTelegramLinked && !telegramOtp && (
             <>
               <button 
                 onClick={handleLinkTelegram}
@@ -390,45 +392,42 @@ const Settings = () => {
             </>
           )}
 
-          {showTelegramOtp && !isTelegramLinked && (
+          {telegramOtp && !isTelegramLinked && (
             <div style={{ marginTop: '1rem' }}>
               <div style={{ 
-                background: '#e3f2fd', 
-                padding: '1rem', 
+                background: '#e8f5e9', 
+                padding: '1.5rem', 
                 borderRadius: '8px', 
                 marginBottom: '1rem',
-                border: '1px solid #2196f3'
+                border: '2px solid #4caf50'
               }}>
-                <p style={{ margin: '0 0 0.5rem 0', fontWeight: 'bold', color: '#1976d2' }}>
-                  📱 Pasos para recibir tu código:
+                <p style={{ margin: '0 0 1rem 0', fontWeight: 'bold', color: '#2e7d32', fontSize: '1.1rem' }}>
+                  🔑 Tu código de verificación:
+                </p>
+                <div style={{ 
+                  background: 'white', 
+                  padding: '1rem', 
+                  borderRadius: '4px',
+                  textAlign: 'center',
+                  fontSize: '2rem',
+                  fontWeight: 'bold',
+                  letterSpacing: '0.5rem',
+                  color: '#1976d2',
+                  marginBottom: '1rem'
+                }}>
+                  {telegramOtp}
+                </div>
+                <p style={{ margin: '0 0 0.5rem 0', fontWeight: 'bold', color: '#2e7d32' }}>
+                  📱 Pasos para completar la vinculación:
                 </p>
                 <ol style={{ margin: 0, paddingLeft: '1.5rem', color: '#555' }}>
                   <li>Abre Telegram en tu teléfono</li>
-                  <li>Busca <strong>@FinanzasAppBot</strong> o <a href="https://t.me/FinanzasAppBot" target="_blank" rel="noopener noreferrer" style={{ color: '#2196f3' }}>haz clic aquí</a></li>
-                  <li>Presiona "Iniciar" o envía cualquier mensaje</li>
-                  <li>Recibirás tu código de 6 dígitos</li>
+                  <li>Busca <strong>@FinanzasAppBot</strong> o <a href="https://t.me/FinanzasAppBot" target="_blank" rel="noopener noreferrer" style={{ color: '#2196f3', fontWeight: 'bold' }}>haz clic aquí</a></li>
+                  <li>Presiona "Iniciar" o envía <strong>/start</strong></li>
+                  <li>Envía el código de 6 dígitos mostrado arriba</li>
+                  <li>¡Listo! Tu cuenta quedará vinculada automáticamente</li>
                 </ol>
               </div>
-              
-              <div className="form-group">
-                <label>Código de verificación</label>
-                <input
-                  type="text"
-                  value={telegramOtp}
-                  onChange={(e) => setTelegramOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                  placeholder="123456"
-                  maxLength={6}
-                  style={{ width: '200px' }}
-                />
-              </div>
-              <button 
-                onClick={handleVerifyTelegram}
-                disabled={loading || telegramOtp.length !== 6}
-                className="btn-primary"
-                style={{ marginBottom: '1rem' }}
-              >
-                {loading ? 'Verificando...' : '✓ Verificar Código'}
-              </button>
             </div>
           )}
 

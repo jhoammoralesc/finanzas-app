@@ -61,9 +61,17 @@ async function linkMessaging(userId, event, headers, platform) {
   }));
 
   const sent = await sendOTP(platform, phoneNumber, otp);
-  if (!sent) return { statusCode: 500, headers, body: JSON.stringify({ error: 'Error enviando código' }) };
   
-  return { statusCode: 200, headers, body: JSON.stringify({ success: true, message: `Código enviado a ${platform}`, botLink: platform === 'telegram' ? 'https://t.me/FinanzasAppBot' : null }) };
+  return { 
+    statusCode: 200, 
+    headers, 
+    body: JSON.stringify({ 
+      success: true, 
+      message: platform === 'telegram' ? 'Abre el bot y envía este código' : 'Código enviado',
+      otp: platform === 'telegram' ? otp : undefined,
+      botLink: platform === 'telegram' ? 'https://t.me/FinanzasAppBot' : null 
+    }) 
+  };
 }
 
 async function verifyMessaging(userId, event, headers, platform) {
