@@ -149,13 +149,28 @@ async function createBudget(userId, data, headers) {
 }
 
 async function updateBudget(userId, budgetId, data, headers) {
+  const updateExpressions = [];
+  const expressionAttributeValues = {};
+  
+  if (data.amount !== undefined) {
+    updateExpressions.push('amount = :amount');
+    expressionAttributeValues[':amount'] = data.amount;
+  }
+  
+  if (data.category !== undefined) {
+    updateExpressions.push('category = :category');
+    expressionAttributeValues[':category'] = data.category;
+  }
+  
+  if (updateExpressions.length === 0) {
+    return { statusCode: 400, headers, body: JSON.stringify({ error: 'No fields to update' }) };
+  }
+
   const params = {
     TableName: TABLE_NAME,
     Key: { userId, budgetId },
-    UpdateExpression: 'set amount = :amount',
-    ExpressionAttributeValues: {
-      ':amount': data.amount
-    },
+    UpdateExpression: 'set ' + updateExpressions.join(', '),
+    ExpressionAttributeValues: expressionAttributeValues,
     ReturnValues: 'ALL_NEW'
   };
 

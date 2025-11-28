@@ -155,53 +155,79 @@ async function processMessage(userId, text, platform, identifier) {
   }
 }
 
+async function categorize(description, userId) {
+  const result = await docClient.send(new QueryCommand({
+    TableName: 'finanzas-budgets',
+    KeyConditionExpression: 'userId = :userId',
+    ExpressionAttributeValues: { ':userId': userId }
+  }));
+  
+  if (!result.Items?.length) return 'Otros';
+  
+  const categories = result.Items.map(b => b.category).join('\n- ');
+  const prompt = `Eres un asistente de categorización financiera. Analiza la descripción de la transacción y asigna la categoría EXACTA de la lista.
+
+Categorías disponibles:
+- ${categories}
+
+Descripción de la transacción: "${description}"
+
+Reglas:
+1. Devuelve SOLO el nombre exacto de UNA categoría de la lista
+2. Si la palabra clave está en la descripción (ej: "ahorro"), usa esa categoría
+3. Si no hay coincidencia clara, usa "Otros"
+4. NO agregues explicaciones, SOLO el nombre de la categoría
+
+Categoría:`;
+  
+  const response = await bedrockClient.send(new InvokeModelCommand({
+    modelId: 'anthropic.claude-3-haiku-20240307-v1:0',
+    body: JSON.stringify({
+      anthropic_version: 'bedrock-2023-05-31',
+      max_tokens: 20,
+      temperature: 0,
+      messages: [{ role: 'user', content: prompt }]
+    })
+  }));
+  
+  const result2 = JSON.parse(new TextDecoder().decode(response.body));
+  const category = result2.content[0].text.trim();
+  
+  // Validar que la categoría existe
+  const validCategories = result.Items.map(b => b.category);
+  return validCategories.includes(category) ? category : 'Otros';
+}
+
 async function parseMessage(text, userId) {
   const lower = text.toLowerCase();
   const expenseMatch = lower.match(/(?:gast[eé]|pagu[eé]|compr[eé])\s*\$?(\d+(?:\.\d+)?)\s+(?:en|de|para|por)\s+(.+)/i);
   if (expenseMatch) {
+    const description = expenseMatch[2].trim();
     return {
       type: 'transaction',
       data: {
         amount: parseFloat(expenseMatch[1]),
-        description: expenseMatch[2].trim(),
-        category: await categorize(expenseMatch[2].trim(), userId),
+        description,
+        category: await categorize(description, userId),
         transactionType: 'expense'
       }
     };
   }
   const incomeMatch = lower.match(/(?:recib[ií]|ingres[oó]|cobr[eé])\s*\$?(\d+(?:\.\d+)?)\s+(?:de|por)?\s*(.+)/i);
   if (incomeMatch) {
+    const description = incomeMatch[2].trim();
     return {
       type: 'transaction',
       data: {
         amount: parseFloat(incomeMatch[1]),
-        description: incomeMatch[2].trim(),
-        category: 'Ingreso',
+        description,
+        category: await categorize(description, userId),
         transactionType: 'income'
       }
     };
   }
   if (lower.match(/(?:reporte|resumen|balance|saldo)/)) return { type: 'report' };
   return null;
-}
-
-async function categorize(description, userId) {
-  try {
-    const result = await docClient.send(new QueryCommand({
-      TableName: 'finanzas-categories',
-      KeyConditionExpression: 'userId = :userId',
-      ExpressionAttributeValues: { ':userId': userId }
-    }));
-    const categories = result.Items || [];
-    const desc = description.toLowerCase();
-    for (const category of categories) {
-      const keywords = (category.keywords || []).filter(k => k.length > 1);
-      if (keywords.some(k => desc.includes(k.toLowerCase()))) return category.name;
-    }
-    return 'Otros';
-  } catch (error) {
-    return 'Otros';
-  }
 }
 
 async function createTransaction(userId, data, platform) {
@@ -212,7 +238,6 @@ async function createTransaction(userId, data, platform) {
       body: JSON.stringify({
         amount: data.amount,
         description: data.description,
-        category: data.category,
         type: data.transactionType,
         date: new Date().toISOString().split('T')[0],
         source: platform

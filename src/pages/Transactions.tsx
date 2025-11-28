@@ -149,32 +149,62 @@ const Transactions = () => {
       <div className="transactions-list">
         <h3>Historial de Transacciones</h3>
         {transactions.length === 0 ? (
-          <p className="empty-state">No hay transacciones registradas</p>
+          <div className="empty-state">
+            <p>📭 No hay transacciones registradas</p>
+            <small>Agrega tu primera transacción o envía un mensaje al bot</small>
+          </div>
         ) : (
           <div className="transactions-table">
-            {transactions.map(transaction => (
-              <div key={transaction.id} className={`transaction-item ${transaction.type}`}>
-                <div className="transaction-info">
-                  <div className="transaction-main">
-                    <span className="description">{transaction.description}</span>
-                    <span className={`amount ${transaction.type}`}>
-                      {transaction.type === 'income' ? '+' : '-'}${transaction.amount.toLocaleString()}
-                    </span>
+            {transactions.map(transaction => {
+              const categoryEmoji = {
+                'Alimentación': '🍔',
+                'Transporte': '🚗',
+                'Entretenimiento': '🎮',
+                'Salud': '💊',
+                'Educación': '📚',
+                'Salario': '💰',
+                'Ahorro': '💵',
+                'Otros': '📦'
+              }[transaction.category] || '📦';
+              
+              return (
+                <div key={transaction.id} className={`transaction-item ${transaction.type}`}>
+                  <div className="transaction-icon">
+                    {categoryEmoji}
                   </div>
-                  <div className="transaction-details">
-                    <span className="category">{transaction.category}</span>
-                    <span className="date">{new Date(transaction.date).toLocaleDateString()}</span>
+                  <div className="transaction-info">
+                    <div className="transaction-main">
+                      <span className="description">{transaction.description}</span>
+                      <span className={`amount ${transaction.type}`}>
+                        {transaction.type === 'income' ? '+' : '-'}${transaction.amount.toLocaleString()}
+                      </span>
+                    </div>
+                    <div className="transaction-details">
+                      <span className="category">{transaction.category}</span>
+                      <span className="separator">•</span>
+                      <span className="date">{new Date(transaction.date).toLocaleDateString('es-ES', { 
+                        day: 'numeric', 
+                        month: 'short', 
+                        year: 'numeric' 
+                      })}</span>
+                      {transaction.source && (
+                        <>
+                          <span className="separator">•</span>
+                          <span className="source">{transaction.source === 'telegram' ? '📱 Telegram' : transaction.source === 'whatsapp' ? '💬 WhatsApp' : '✏️ Manual'}</span>
+                        </>
+                      )}
+                    </div>
                   </div>
+                  <button 
+                    className="btn-delete"
+                    onClick={() => handleDelete(transaction.id)}
+                    title="Eliminar transacción"
+                  >
+                    🗑️
+                  </button>
                 </div>
-                <button 
-                  className="btn-delete"
-                  onClick={() => handleDelete(transaction.id)}
-                  title="Eliminar transacción"
-                >
-                  🗑️
-                </button>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

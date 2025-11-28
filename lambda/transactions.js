@@ -1,5 +1,5 @@
 const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
-const { DynamoDBDocumentClient, PutCommand, QueryCommand, DeleteCommand, UpdateCommand } = require('@aws-sdk/lib-dynamodb');
+const { DynamoDBDocumentClient, PutCommand, QueryCommand, DeleteCommand } = require('@aws-sdk/lib-dynamodb');
 
 const client = new DynamoDBClient({ region: 'us-east-2' });
 const docClient = DynamoDBDocumentClient.from(client);
@@ -56,9 +56,10 @@ async function createTransaction(userId, data, headers) {
     userId,
     amount: data.amount,
     description: data.description,
-    category: data.category,
+    category: data.category || 'Otros',
     type: data.type,
-    date: data.date,
+    date: data.date || new Date().toISOString().split('T')[0],
+    source: data.source || 'manual',
     createdAt: new Date().toISOString()
   };
 
@@ -73,7 +74,7 @@ async function createTransaction(userId, data, headers) {
 async function deleteTransaction(userId, transactionId, headers) {
   await docClient.send(new DeleteCommand({
     TableName: TABLE_NAME,
-    Key: { userId, transactionId }
+    Key: { userId, id: transactionId }
   }));
 
   return { statusCode: 200, headers, body: JSON.stringify({ message: 'Transaction deleted' }) };

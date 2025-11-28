@@ -2,18 +2,12 @@ export interface Transaction {
   id: string;
   userId: string;
   amount: number;
-  type: 'INCOME' | 'EXPENSE';
+  type: 'income' | 'expense';
   category: string;
-  subcategory?: string;
   description: string;
   date: string;
-  source: 'MANUAL' | 'WHATSAPP' | 'BANK_IMPORT';
-  isRecurring: boolean;
-  recurringFrequency?: 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'YEARLY';
-  tags?: string[];
-  location?: string;
+  source?: 'manual' | 'telegram' | 'whatsapp';
   createdAt: string;
-  updatedAt: string;
 }
 
 export interface Category {

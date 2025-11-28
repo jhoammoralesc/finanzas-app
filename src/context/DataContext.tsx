@@ -11,6 +11,8 @@ export interface Transaction {
   type: 'income' | 'expense';
   date: string;
   userId: string;
+  source?: 'manual' | 'telegram' | 'whatsapp';
+  createdAt?: string;
 }
 
 export interface Budget {

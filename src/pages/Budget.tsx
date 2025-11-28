@@ -70,7 +70,7 @@ const Budget = () => {
     }
   };
 
-  const updateBudget = async (budgetId: string, newAmount: number) => {
+  const updateBudget = async (budgetId: string, updates: { category?: string; amount?: number }) => {
     try {
       const session = await fetchAuthSession();
       const token = session.tokens?.idToken?.toString();
@@ -81,7 +81,7 @@ const Budget = () => {
           'Authorization': token || '',
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ amount: newAmount })
+        body: JSON.stringify(updates)
       });
 
       if (response.ok) {
@@ -145,20 +145,25 @@ const Budget = () => {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: '1rem', alignItems: 'end' }}>
             <div>
               <label>Categoría</label>
-              <select 
+              <input
+                type="text"
                 value={newBudget.category}
                 onChange={(e) => setNewBudget({...newBudget, category: e.target.value})}
+                placeholder="Ej: Alimentación, Transporte, etc."
                 required
+                list="category-suggestions"
                 style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #ddd' }}
-              >
-                <option value="">Seleccionar...</option>
-                <option value="Alimentación">Alimentación</option>
-                <option value="Transporte">Transporte</option>
-                <option value="Entretenimiento">Entretenimiento</option>
-                <option value="Salud">Salud</option>
-                <option value="Educación">Educación</option>
-                <option value="Servicios">Servicios</option>
-              </select>
+              />
+              <datalist id="category-suggestions">
+                <option value="Alimentación" />
+                <option value="Transporte" />
+                <option value="Entretenimiento" />
+                <option value="Salud" />
+                <option value="Educación" />
+                <option value="Servicios" />
+                <option value="Vivienda" />
+                <option value="Otros" />
+              </datalist>
             </div>
             <div>
               <label>Monto Mensual</label>
@@ -219,15 +224,37 @@ const Budget = () => {
                     {isEditing ? (
                       <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                         <input
+                          type="text"
+                          defaultValue={budget.category}
+                          id={`edit-category-${budget.budgetId}`}
+                          placeholder="Categoría"
+                          list="category-suggestions-edit"
+                          style={{ width: '150px', padding: '0.3rem', borderRadius: '4px', border: '1px solid #ddd' }}
+                        />
+                        <datalist id="category-suggestions-edit">
+                          <option value="Alimentación" />
+                          <option value="Transporte" />
+                          <option value="Entretenimiento" />
+                          <option value="Salud" />
+                          <option value="Educación" />
+                          <option value="Servicios" />
+                          <option value="Vivienda" />
+                          <option value="Otros" />
+                        </datalist>
+                        <input
                           type="number"
                           defaultValue={budget.amount}
-                          id={`edit-${budget.budgetId}`}
+                          id={`edit-amount-${budget.budgetId}`}
                           style={{ width: '120px', padding: '0.3rem', borderRadius: '4px', border: '1px solid #ddd' }}
                         />
                         <button 
                           onClick={() => {
-                            const input = document.getElementById(`edit-${budget.budgetId}`) as HTMLInputElement;
-                            updateBudget(budget.budgetId, Number(input.value));
+                            const categoryInput = document.getElementById(`edit-category-${budget.budgetId}`) as HTMLInputElement;
+                            const amountInput = document.getElementById(`edit-amount-${budget.budgetId}`) as HTMLInputElement;
+                            updateBudget(budget.budgetId, {
+                              category: categoryInput.value,
+                              amount: Number(amountInput.value)
+                            });
                           }}
                           style={{ background: '#4ECDC4', color: 'white', border: 'none', padding: '0.3rem 0.8rem', borderRadius: '4px', cursor: 'pointer' }}
                         >
