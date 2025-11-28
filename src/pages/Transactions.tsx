@@ -180,7 +180,10 @@ const Transactions = () => {
                       </span>
                     </div>
                     <div className="transaction-details">
-                      <span className="category">{transaction.category}</span>
+                      <span className="category">
+                        {transaction.category}
+                        {transaction.subcategory && ` • ${transaction.subcategory}`}
+                      </span>
                       <span className="separator">•</span>
                       <span className="date">{new Date(transaction.date).toLocaleDateString('es-ES', { 
                         day: 'numeric', 

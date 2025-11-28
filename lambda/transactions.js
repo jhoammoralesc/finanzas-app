@@ -57,6 +57,7 @@ async function createTransaction(userId, data, headers) {
     amount: data.amount,
     description: data.description,
     category: data.category || 'Otros',
+    subcategory: data.subcategory || null,
     type: data.type,
     date: data.date || new Date().toISOString().split('T')[0],
     source: data.source || 'manual',

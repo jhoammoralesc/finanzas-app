@@ -149,7 +149,10 @@ async function processMessage(userId, text, platform, identifier) {
     await createTransaction(userId, parsed.data, platform);
     const emoji = parsed.data.transactionType === 'expense' ? '💸' : '💰';
     const type = parsed.data.transactionType === 'expense' ? 'Gasto' : 'Ingreso';
-    await sendMessage(platform, identifier, `${emoji} ${type} registrado:\n$${parsed.data.amount.toLocaleString()} - ${parsed.data.category}`);
+    const categoryInfo = parsed.data.subcategory 
+      ? `${parsed.data.category} (${parsed.data.subcategory})`
+      : parsed.data.category;
+    await sendMessage(platform, identifier, `${emoji} ${type} registrado:\n$${parsed.data.amount.toLocaleString()} - ${categoryInfo}`);
   } else if (parsed.type === 'report') {
     await sendMessage(platform, identifier, '📊 Generando reporte...');
   }
@@ -162,70 +165,140 @@ async function categorize(description, userId) {
     ExpressionAttributeValues: { ':userId': userId }
   }));
   
-  if (!result.Items?.length) return 'Otros';
+  const defaultCategories = {
+    income: ['Salario', 'Freelance', 'Inversiones', 'Otros Ingresos'],
+    expense: ['Alimentación', 'Transporte', 'Entretenimiento', 'Salud', 'Educación', 'Servicios', 'Ahorro', 'Otros']
+  };
   
-  const categories = result.Items.map(b => b.category).join('\n- ');
-  const prompt = `Eres un asistente de categorización financiera. Analiza la descripción de la transacción y asigna la categoría EXACTA de la lista.
+  const userCategories = result.Items?.map(b => b.category) || [];
+  const allCategories = [...new Set([...userCategories, ...defaultCategories.income, ...defaultCategories.expense])];
+  
+  if (!allCategories.length) return { category: 'Otros', subcategory: null };
+  
+  const categories = allCategories.join('\n- ');
+  const prompt = `Analiza esta transacción y extrae la categoría principal y subcategoría detallada.
 
-Categorías disponibles:
+Categorías principales disponibles:
 - ${categories}
 
-Descripción de la transacción: "${description}"
+Descripción: "${description}"
 
-Reglas:
-1. Devuelve SOLO el nombre exacto de UNA categoría de la lista
-2. Si la palabra clave está en la descripción (ej: "ahorro"), usa esa categoría
-3. Si no hay coincidencia clara, usa "Otros"
-4. NO agregues explicaciones, SOLO el nombre de la categoría
+Instrucciones:
+1. Identifica la categoría principal (ej: Alimentación, Transporte, etc.)
+2. Extrae la subcategoría específica con máximo detalle (ej: "Comida Rápida - Hamburguesas", "Pizza", "Verduras - Lechuga y Tomate")
+3. Si menciona productos específicos, inclúyelos en la subcategoría
 
-Categoría:`;
+Responde en formato JSON:
+{
+  "category": "nombre de categoría principal",
+  "subcategory": "detalle específico de la compra"
+}`;
   
   const response = await bedrockClient.send(new InvokeModelCommand({
     modelId: 'anthropic.claude-3-haiku-20240307-v1:0',
     body: JSON.stringify({
       anthropic_version: 'bedrock-2023-05-31',
-      max_tokens: 20,
+      max_tokens: 100,
       temperature: 0,
       messages: [{ role: 'user', content: prompt }]
     })
   }));
   
   const result2 = JSON.parse(new TextDecoder().decode(response.body));
-  const category = result2.content[0].text.trim();
+  const text = result2.content[0].text.trim();
   
-  // Validar que la categoría existe
-  const validCategories = result.Items.map(b => b.category);
-  return validCategories.includes(category) ? category : 'Otros';
+  try {
+    const parsed = JSON.parse(text);
+    const category = allCategories.includes(parsed.category) ? parsed.category : 'Otros';
+    return {
+      category,
+      subcategory: parsed.subcategory || null
+    };
+  } catch (e) {
+    return { category: 'Otros', subcategory: null };
+  }
 }
 
 async function parseMessage(text, userId) {
-  const lower = text.toLowerCase();
-  const expenseMatch = lower.match(/(?:gast[eé]|pagu[eé]|compr[eé])\s*\$?(\d+(?:\.\d+)?)\s+(?:en|de|para|por)\s+(.+)/i);
+  const lower = text.toLowerCase().trim();
+  
+  // Patrón: "Gasté/Pagué/Compré 25000 en almuerzo"
+  let expenseMatch = lower.match(/(?:gast[eé]|pagu[eé]|compr[eé])\s*\$?(\d+(?:\.\d+)?)\s+(?:en|de|para|por)\s+(.+)/i);
   if (expenseMatch) {
     const description = expenseMatch[2].trim();
+    const categorization = await categorize(description, userId);
     return {
       type: 'transaction',
       data: {
         amount: parseFloat(expenseMatch[1]),
         description,
-        category: await categorize(description, userId),
+        category: categorization.category,
+        subcategory: categorization.subcategory,
         transactionType: 'expense'
       }
     };
   }
-  const incomeMatch = lower.match(/(?:recib[ií]|ingres[oó]|cobr[eé])\s*\$?(\d+(?:\.\d+)?)\s+(?:de|por)?\s*(.+)/i);
+  
+  // Patrón: "Deposité/Ahorré 300000 ahorro irlan" (GASTO - dinero que sale)
+  const depositMatch = lower.match(/(?:deposit[eé]|ahorr[eé])\s*\$?(\d+(?:\.\d+)?)\s+(.+)/i);
+  if (depositMatch) {
+    const description = depositMatch[2].trim();
+    const categorization = await categorize(description, userId);
+    return {
+      type: 'transaction',
+      data: {
+        amount: parseFloat(depositMatch[1]),
+        description,
+        category: categorization.category,
+        subcategory: categorization.subcategory,
+        transactionType: 'expense'
+      }
+    };
+  }
+  
+  // Patrón: "Recibí/Ingresó/Cobré/Gané 1000000 de salario" (INGRESO - dinero que entra)
+  let incomeMatch = lower.match(/(?:recib[ií]|ingres[oó]|cobr[eé]|gan[eé])\s*\$?(\d+(?:\.\d+)?)\s+(?:de|por)?\s*(.+)/i);
   if (incomeMatch) {
     const description = incomeMatch[2].trim();
+    const categorization = await categorize(description, userId);
     return {
       type: 'transaction',
       data: {
         amount: parseFloat(incomeMatch[1]),
         description,
-        category: await categorize(description, userId),
+        category: categorization.category,
+        subcategory: categorization.subcategory,
         transactionType: 'income'
       }
     };
   }
+  
+  // Patrón simple: "300000 descripción"
+  const simpleMatch = lower.match(/^(\d+(?:\.\d+)?)\s+(.+)$/);
+  if (simpleMatch) {
+    const description = simpleMatch[2].trim();
+    const categorization = await categorize(description, userId);
+    
+    // INGRESO: dinero que entra (salario, cobro, recibí)
+    const incomeKeywords = /(?:salario|sueldo|ingreso|cobro|recib|gan)/i;
+    
+    let transactionType = 'expense'; // Default: dinero que sale
+    if (incomeKeywords.test(description)) {
+      transactionType = 'income';
+    }
+    
+    return {
+      type: 'transaction',
+      data: {
+        amount: parseFloat(simpleMatch[1]),
+        description,
+        category: categorization.category,
+        subcategory: categorization.subcategory,
+        transactionType
+      }
+    };
+  }
+  
   if (lower.match(/(?:reporte|resumen|balance|saldo)/)) return { type: 'report' };
   return null;
 }

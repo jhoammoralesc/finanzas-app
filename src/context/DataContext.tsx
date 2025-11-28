@@ -8,6 +8,7 @@ export interface Transaction {
   amount: number;
   description: string;
   category: string;
+  subcategory?: string;
   type: 'income' | 'expense';
   date: string;
   userId: string;
